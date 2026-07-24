@@ -1,4 +1,5 @@
-name": "BLADE SHADOW MD",
+{
+  "name": "BLADE SHADOW MD",
   "version": "1.0.0",
   "description": "Digital Crew WhatsApp Bot — a powerful, fun and intelligent bot packed with extra features, AI capabilities and a sleek futuristic design",
   "main": "index.js",
