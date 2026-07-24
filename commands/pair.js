@@ -131,7 +131,7 @@ run()
             if (!configmanager.config.users[num]) {
                 configmanager.config.users[num] = {
                     sudoList: [`${num}@s.whatsapp.net`],
-                    tagAudioPath: 'database/Satomaki.mp3',
+                    tagAudioPath: 'database/DigiX.mp3',
                     antilink: false, response: true, autoreact: false,
                     prefix: '.', reaction: '✠', welcome: true,
                     record: false, type: false, publicMode: false,
