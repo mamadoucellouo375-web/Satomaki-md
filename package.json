@@ -18,6 +18,7 @@
   ],
   "dependencies": {
     "baileys": "npm:baileys@latest",
+    "@crysnovax/baileys": "latest",
     "axios": "^1.7.7",
     "axios-retry": "^3.9.1",
     "uuid": "^9.0.1",
@@ -25,7 +26,8 @@
     "pino": "^8.18.0",
     "crypto": "latest",
     "file-type": "^19.0.0",
-    "form-data": "^4.0.1"
+    "form-data": "^4.0.1",
+    "yt-search": "^2.11.1"
   },
   "author": "MRsato",
   "license": "ISC"
