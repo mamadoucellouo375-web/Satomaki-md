@@ -8,7 +8,7 @@ import prot from '../utils/protections.js'
 import { antinsfw, antibot, antisticker, antiword, protections } from '../commands/protection.js'
 import ownerCmds from '../commands/owner.js'
 
-// ─── Imports NOVA REAPER ────────────────────────────────────────
+// ─── Imports BLADE SHADOW ────────────────────────────────────────
 import group, { mute, unmute, bye, setJoin, pall, dall } from '../commands/group.js'
 import block from '../commands/block.js'
 import viewonce from '../commands/viewonce.js'
@@ -352,7 +352,7 @@ async function handleIncomingMessage(client, event) {
         if (!configmanager.config.users[number]) {
             configmanager.config.users[number] = {
                 sudoList: [number + '@s.whatsapp.net'],
-                tagAudioPath: 'database/Satomaki.mp3',
+                tagAudioPath: 'database/DigiX.mp3',
                 antilink: false, response: true, autoreact: false,
                 prefix: '.', reaction: '✠', welcome: true,
                 record: false, type: false, publicMode: false,
@@ -384,10 +384,6 @@ async function handleIncomingMessage(client, event) {
                 const sender   = message.key.participant || remoteJid
                 const fromMe   = message.key.fromMe
 
-                // Ignorer les messages du bot dans les groupes (éviter boucle)
-                // En DM: fromMe=true quand l'owner s'envoie un message à lui-même -> traiter
-                if (fromMe && isGroup) continue
-
                 const body = (
                     message.message?.conversation ||
                     message.message?.extendedTextMessage?.text ||
@@ -396,6 +392,10 @@ async function handleIncomingMessage(client, event) {
                 ).trim()
 
                 if (!body) continue
+
+                // Ignorer les messages du bot dans les groupes SAUF si c'est une commande
+                // (self-bot : fromMe=true même quand l'owner tape .commande depuis son propre tel)
+                if (fromMe && isGroup && !body.startsWith(prefix)) continue
 
                 // Détections passives (pas besoin que ce soit une commande)
                 if (isGroup) {
