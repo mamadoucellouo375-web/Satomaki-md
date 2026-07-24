@@ -83,22 +83,18 @@ import stackCommand from '../commands/stack.js'
 import footliveCommand from '../commands/footlive.js'
 import duolingoCommand, { handleDuoResponse } from '../commands/duolingo.js'
 import prayCommand from '../commands/pray.js'
-import antilinkCommand from '../commands/antilink.js'
 import citationCommand from '../commands/citation.js'
 import demoteAllCommand from '../commands/demoteall.js'
 import repo from '../commands/repo.js'
 import restartCommand from '../commands/restart.js'
 import stickerPackCommand, { handleStickerPackResponse } from '../commands/stickerpack.js'
 import welcomeCommand from '../commands/welcome.js'
-
 // ─── Imports NOUVELLES commandes ──────────────────────────────
 import funCmds from '../commands/fun.js'
 import infoCmds from '../commands/info.js'
 import media2Cmds from '../commands/media2.js'
-
 // ─── MAP de dispatch (O(1) au lieu de O(n) switch) ────────────
 let commandMap = null
-
 function buildCommandMap(client) {
     return new Map([
         // ── Utilitaires ───────────────────────────────────────
@@ -114,7 +110,6 @@ function buildCommandMap(client) {
         ['unwarn',      (c,m) => unwarnUser(c,m)],
         ['checkwarn',   (c,m) => checkWarn(c,m)],
         ['resetwarn',   (c,m) => resetWarnUser(c,m)],
-
         // ── Protections avancées ──────────────────────────────
         ['antinsfw',    (c,m) => antinsfw(c,m)],
         ['antibot',     (c,m) => antibot(c,m)],
