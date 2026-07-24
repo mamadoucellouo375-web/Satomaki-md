@@ -142,7 +142,7 @@ async function updateCrewUsers(usersList) {
 
         channelLink: '',
 
-        channelName: '🍁𝐃𝐎̈𝐎̃𝐌 𝐒𝐓𝐈𝐂𝐊𝐄𝐑𝐒 ʕ◕ᴥ◕ʔ🌹',
+        channelName: 'BLADE SHADOW,
 
         prefix: '.',
 
@@ -332,7 +332,7 @@ async function connectToWhatsapp(handleMessage) {
 
 "╔══════════════════╗\\n" +
 
-"║      *𝐒̸𝐀̸𝐓̸𝐎̸𝐌̸𝐀̸𝐊̸𝐈̸-𝙼𝘿*           ║\\n" +
+"║      BLADE SHADOW-𝙼𝘿*           ║\\n" +
 
 "╚══════════════════╝\\n\\n" +
 
@@ -350,15 +350,15 @@ async function connectToWhatsapp(handleMessage) {
 
 \`\\n\\n\` +
 
-\`\${userInfo?.channelName || '🍁𝐃𝐎̈𝐎̃𝐌 𝐒𝐓𝐈𝐂𝐊𝐄𝐑𝐒 ʕ◕ᴥ◕ʔ🌹'}\\n\` +
+\`\${userInfo?.channelName || '🍁BLADE SHADOW }\\n\` +
 
 \`\${userInfo?.channelLink || ''}\\n\\n\` +
 
 "━━━━━━━━━━━━━━━━━━━━━\\n\\n" +
 
-\`> *⚔️ Dev : (꧁⚡𝕹𝖔𝖛𝖆_𝕾𝖆𝖙𝖔𝖒𝖆𝖐𝖎⚡꧂)*\\n\\n\` +
+\`> *⚔️ Dev : (꧁THE EXECUTOR ꧂)*\\n\\n\` +
 
-\`> *_✠ 𝐒̸𝐀̸𝐓̸𝐎̸𝐌̸𝐀̸𝐊̸𝐈̸-𝙼𝘿_*\`;
+\`> *_✠ BLADE SHADOW 𝙼𝘿_*\`;
 
                 await sock.sendMessage(chatId, {
 
@@ -422,7 +422,7 @@ async function connectToWhatsapp(handleMessage) {
 
                         sudoList: [\`\${number}@s.whatsapp.net\`],
 
-                        tagAudioPath: 'tag.mp3',
+                        tagAudioPath: 'database/DigiX.mp3',
 
                         antilink: true,
 
@@ -766,11 +766,11 @@ async function connectCommand(client, message, args) {
 
 
 
-🍁𝐃𝐎̈𝐎̃𝐌 𝐒𝐓𝐈𝐂𝐊𝐄𝐑𝐒 🌹
+✨️BLADE SHADOW ♠️
 
 
 
-> *⚔️ Dev : (꧁⚡𝕹𝖔𝖛𝖆_𝕾𝖆𝖙𝖔𝖒𝖆𝖐𝖎⚡꧂)*`;
+> *⚔️ Dev : (꧁THE EXECUTOR꧂)*`;
 
     
 
