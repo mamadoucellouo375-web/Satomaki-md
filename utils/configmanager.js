@@ -5,7 +5,7 @@ import path from 'path'
 // path for config setup
 
 console.log('initialzing the config path')
-const configPath = 'config.json'
+const configPath = 'Config.json'
 const premiumPath = "db.json"
 
 //load config at startup
