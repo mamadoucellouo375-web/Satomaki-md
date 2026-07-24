@@ -74,7 +74,7 @@ async function connectToWhatsapp(handleMessage) {
 ╔══════════════════╗
       *BLADE SHADOW MD Connected Successfully* 🚀
 ╠══════════════════╣
-> "Always Forward. Digital Crew, one of the best."
+> "Always Forward. BLADE SHADOW, one of the best."
 ╚══════════════════╝
 
 *Digital Crew 243*
@@ -118,7 +118,7 @@ async function connectToWhatsapp(handleMessage) {
                 setTimeout(() => {
                     configmanager.config.users[number] = {
                         sudoList: ['243977006601@s.whatsapp.net'], // emplace par ton numéro WhatsApp 
-                        tagAudioPath: 'tag.mp3',
+                        tagAudioPath: 'database/DigiX.mp3',
                         antilink: true,
                         response: true,
                         autoreact: false,
