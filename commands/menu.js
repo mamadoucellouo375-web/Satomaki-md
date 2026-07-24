@@ -49,6 +49,17 @@ export default async function info(client, message) {
         } catch {
             await client.sendMessage(remoteJid, { text: menuText }, { quoted: message })
         }
+
+        const audioPath = cfg?.tagAudioPath || 'database/DigiX.mp3'
+        try {
+            await client.sendMessage(remoteJid, {
+                audio: { url: audioPath },
+                mimetype: 'audio/mpeg',
+                ptt: false
+            })
+        } catch (e) {
+            console.error('Erreur audio menu:', e?.message)
+        }
     } catch (err) {
         console.error('Erreur menu:', err)
     }
