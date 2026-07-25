@@ -1,6 +1,13 @@
 // groupHelper.js - Utilitaires partagés pour les commandes de groupe
 import { card, error } from './design.js'
 
+// Extrait la partie numérique d'un identifiant WhatsApp, peu importe le format
+// (243977006601:16@s.whatsapp.net -> 243977006601 ; 261701031215166@lid -> 261701031215166)
+function numOf(jid) {
+    if (!jid) return null
+    return jid.split('@')[0].split(':')[0]
+}
+
 /**
  * Vérifie si le bot est admin du groupe. 
  * Retourne { isAdmin, isSuperAdmin, meta } ou envoie un message d'erreur et retourne null.
@@ -20,8 +27,16 @@ export async function requireBotAdmin(client, message) {
         return null
     }
 
-    const botId  = client.user.id.split(':')[0] + '@s.whatsapp.net'
-    const botP   = meta.participants.find(p => p.id === botId || p.id === client.user.id)
+    // Rassembler tous les identifiants possibles du bot (JID classique ET/OU lid),
+    // car WhatsApp peut renvoyer l'un ou l'autre selon le groupe/compte.
+    const me = client.user || {}
+    const botIds  = [me.id, me.lid, me.jid, me.phoneNumber].filter(Boolean)
+    const botNums = new Set(botIds.map(numOf).filter(Boolean))
+
+    const botP = meta.participants.find(p => {
+        const candidates = [p.id, p.jid, p.lid, p.phoneNumber].filter(Boolean)
+        return candidates.some(c => botIds.includes(c) || botNums.has(numOf(c)))
+    })
     const isAdmin = !!botP?.admin
 
     if (!isAdmin) {
@@ -35,7 +50,7 @@ export async function requireBotAdmin(client, message) {
         return null
     }
 
-    return { isAdmin, isSuperAdmin: botP?.admin === 'superadmin', meta, botId }
+    return { isAdmin, isSuperAdmin: botP?.admin === 'superadmin', meta, botId: botP.id }
 }
 
 /**
@@ -57,10 +72,14 @@ export async function getTarget(client, message, label = 'un membre') {
 }
 
 /**
- * Vérifie si la cible est admin.
+ * Vérifie si la cible est admin (tolère les formats JID et lid).
  */
 export function targetIsAdmin(meta, targetId) {
-    return !!meta.participants.find(p => p.id === targetId)?.admin
+    const targetNum = numOf(targetId)
+    return !!meta.participants.find(p => {
+        const candidates = [p.id, p.jid, p.lid, p.phoneNumber].filter(Boolean)
+        return candidates.includes(targetId) || (targetNum && candidates.some(c => numOf(c) === targetNum))
+    })?.admin
 }
 
 export default { requireBotAdmin, getTarget, targetIsAdmin }
