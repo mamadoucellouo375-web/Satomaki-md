@@ -45,22 +45,27 @@ async function viaYtdlp(url, type) {
     })
 }
 
-// ─── 2. Cobalt API (worker public) ────────────────────────────
+// ─── 2. Cobalt API (nouvelle API v10 — l'ancien /api/json est mort depuis nov. 2024) ──
 async function viaCobalt(url, type) {
     const endpoints = [
-        'https://cobalt.api.timelessqq.workers.dev/',
-        'https://api.cobalt.tools/api/json'
+        'https://sunny.imput.net/',
     ]
     for (const ep of endpoints) {
         try {
             const res = await axios.post(ep, {
-                url, isAudioOnly: type === 'audio',
-                aFormat: 'mp3', vQuality: '480', filenamePattern: 'basic'
-            }, { timeout: 20000, headers: { Accept: 'application/json', 'Content-Type': 'application/json' } })
-            const link = res.data?.url || res.data?.audio
-            if (link?.startsWith('http')) {
+                url,
+                downloadMode: type === 'audio' ? 'audio' : 'auto',
+                audioFormat: 'mp3',
+                videoQuality: '480',
+                filenameStyle: 'basic'
+            }, {
+                timeout: 20000,
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json' }
+            })
+            const data = res.data
+            if ((data?.status === 'tunnel' || data?.status === 'redirect') && data.url) {
                 const dest = tmpPath(type)
-                await saveStream(link, dest)
+                await saveStream(data.url, dest)
                 if (validFile(dest)) return dest
                 fs.unlinkSync(dest)
             }
