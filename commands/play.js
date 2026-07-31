@@ -27,7 +27,7 @@ export async function play(message, client) {
         }, { quoted: message })
         fs.unlink(filePath, () => {})
     } catch (e) {
-        await client.sendMessage(remoteJid, { text: error(e.message.split('\n')[0]) }, { quoted: message })
+        await client.sendMessage(remoteJid, { text: error(e.message) }, { quoted: message })
     }
 }
 export default play
