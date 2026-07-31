@@ -50,6 +50,7 @@ async function viaCobalt(url, type) {
     const endpoints = [
         'https://sunny.imput.net/',
     ]
+    const detail = []
     for (const ep of endpoints) {
         try {
             const res = await axios.post(ep, {
@@ -68,51 +69,21 @@ async function viaCobalt(url, type) {
                 await saveStream(data.url, dest)
                 if (validFile(dest)) return dest
                 fs.unlinkSync(dest)
+            } else {
+                detail.push(`${ep} -> status=${data?.status}, error=${JSON.stringify(data?.error || data)}`)
             }
-        } catch {}
+        } catch (e) {
+            detail.push(`${ep} -> ${e.response?.status || ''} ${e.message}`)
+        }
     }
-    throw new Error('Cobalt: aucun endpoint disponible')
+    console.error('Cobalt détail:', detail.join(' | '))
+    throw new Error(`Cobalt: aucun endpoint disponible (${detail.join(' | ')})`)
 }
 
-// ─── 3. SaveTube ──────────────────────────────────────────────
-async function viaSavetube(url, type) {
-    const id = videoId(url)
-    if (!id) throw new Error('ID introuvable')
-    const cdnRes = await axios.get('https://media.savetube.me/api/random-cdn', { timeout: 10000 })
-    const cdn = cdnRes.data?.cdn
-    if (!cdn) throw new Error('Savetube CDN indisponible')
-    const res = await axios.post(`https://${cdn}/download`, {
-        url: `https://www.youtube.com/watch?v=${id}`,
-        downloadType: type === 'audio' ? 'audio' : 'video',
-        quality: type === 'audio' ? '128' : '480'
-    }, { timeout: 25000 })
-    const link = res.data?.data?.downloadUrl || res.data?.downloadUrl
-    if (!link?.startsWith('http')) throw new Error('Savetube: pas de lien')
-    const dest = tmpPath(type)
-    await saveStream(link, dest)
-    if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('Savetube: fichier invalide') }
-    return dest
-}
+// SaveTube (media.savetube.me) et YtMp3 (yt-download.org) sont morts :
+// DNS injoignable / TLS cassé. Retirés en attendant un remplaçant fiable.
 
-// ─── 4. YtMp3 API publique ────────────────────────────────────
-async function viaYtmp3(url, type) {
-    const id = videoId(url)
-    if (!id) throw new Error('ID introuvable')
-    const base = type === 'audio'
-        ? `https://www.yt-download.org/api/button/mp3/${id}`
-        : `https://www.yt-download.org/api/button/videos/${id}`
-    const res = await axios.get(base, { timeout: 20000, headers: { 'User-Agent': 'Mozilla/5.0' } })
-    // Parser la réponse HTML pour le lien de téléchargement
-    const match = res.data?.match(/href="(https:\/\/[^"]+\.mp[34][^"]*)"/)
-    const link = match?.[1]
-    if (!link) throw new Error('YtMp3: lien introuvable dans la réponse')
-    const dest = tmpPath(type)
-    await saveStream(link, dest)
-    if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('YtMp3: fichier invalide') }
-    return dest
-}
-
-// ─── 5. y2down API ────────────────────────────────────────────
+// ─── y2down API ────────────────────────────────────────────
 async function viaY2down(url, type) {
     const id = videoId(url)
     if (!id) throw new Error('ID introuvable')
@@ -120,14 +91,14 @@ async function viaY2down(url, type) {
         timeout: 20000, headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://y2down.cc/' }
     })
     const link = res.data?.url || res.data?.dlink
-    if (!link?.startsWith('http')) throw new Error('y2down: pas de lien')
+    if (!link?.startsWith('http')) throw new Error(`y2down: pas de lien (reponse: ${JSON.stringify(res.data).slice(0,200)})`)
     const dest = tmpPath(type)
     await saveStream(link, dest)
     if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('y2down: fichier invalide') }
     return dest
 }
 
-// ─── 6. Loader.to ─────────────────────────────────────────────
+// ─── Loader.to ─────────────────────────────────────────────
 async function viaLoaderTo(url, type) {
     const id = videoId(url)
     if (!id) throw new Error('ID introuvable')
@@ -137,21 +108,23 @@ async function viaLoaderTo(url, type) {
         { timeout: 25000, headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://loader.to/' } }
     )
     const link = res.data?.download_url || res.data?.url
-    if (!link?.startsWith('http')) throw new Error('Loader.to: pas de lien')
+    if (!link?.startsWith('http')) {
+        console.error('Loader.to reponse brute:', JSON.stringify(res.data).slice(0, 300))
+        throw new Error(`Loader.to: pas de lien (reponse: ${JSON.stringify(res.data).slice(0,200)})`)
+    }
     const dest = tmpPath(type)
     await saveStream(link, dest)
     if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('Loader.to: fichier invalide') }
     return dest
 }
 
+
 // ─── Fonction principale avec cascade ─────────────────────────
 export async function downloadYoutube(url, type = 'audio') {
     const providers = [
         ['yt-dlp',    () => viaYtdlp(url, type)],
         ['Cobalt',    () => viaCobalt(url, type)],
-        ['SaveTube',  () => viaSavetube(url, type)],
         ['y2down',    () => viaY2down(url, type)],
-        ['YtMp3',     () => viaYtmp3(url, type)],
         ['Loader.to', () => viaLoaderTo(url, type)],
     ]
 
