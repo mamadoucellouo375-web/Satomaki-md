@@ -8,27 +8,16 @@ async function viaTikwm(url) {
     })
     const d = res.data?.data
     const videoUrl = d?.play || d?.hdplay || d?.wmplay
-    if (!videoUrl) throw new Error('tikwm: pas de lien')
+    if (!videoUrl) {
+        console.error('tikwm réponse brute:', JSON.stringify(res.data))
+        throw new Error(`tikwm: pas de lien (code=${res.data?.code}, msg=${res.data?.msg || 'inconnu'})`)
+    }
     return { url: videoUrl.startsWith('http') ? videoUrl : `https://tikwm.com${videoUrl}`, title: d?.title }
 }
 
-async function viaTiklydown(url) {
-    const res = await axios.get('https://api.tiklydown.eu.org/api/download', {
-        params: { url }, timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' }
-    })
-    const videoUrl = res.data?.video?.noWatermark || res.data?.video?.watermark
-    if (!videoUrl) throw new Error('tiklydown: pas de lien')
-    return { url: videoUrl, title: res.data?.title }
-}
-
-async function viaVreden(url) {
-    const res = await axios.get('https://api.vreden.my.id/api/tiktok', {
-        params: { url }, timeout: 15000
-    })
-    const videoUrl = res.data?.result?.data?.[0]?.hd || res.data?.result?.video
-    if (!videoUrl) throw new Error('vreden: pas de lien')
-    return { url: videoUrl, title: res.data?.result?.title }
-}
+// tiklydown (api.tiklydown.eu.org) et vreden (api.vreden.my.id) sont morts :
+// domaines DNS injoignables / certificat pointant vers un autre service.
+// Retirés en attendant un fournisseur de remplacement fiable.
 
 export default async function tiktokCommand(client, message) {
     const remoteJid = message.key.remoteJid
@@ -41,7 +30,7 @@ export default async function tiktokCommand(client, message) {
 
     await client.sendMessage(remoteJid, { text: loading('Téléchargement TikTok') }, { quoted: message })
 
-    const providers = [viaTikwm, viaTiklydown, viaVreden]
+    const providers = [viaTikwm]
     const errors = []
 
     for (const provider of providers) {
@@ -62,3 +51,4 @@ export default async function tiktokCommand(client, message) {
         text: error(`Impossible de télécharger cette vidéo.\n${errors.join('\n')}`)
     }, { quoted: message })
 }
+
