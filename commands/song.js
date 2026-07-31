@@ -47,7 +47,7 @@ export default async function songCommand(client, message) {
     } catch (e) {
         console.error('Song error:', e.message)
         await client.sendMessage(remoteJid, {
-            text: error(`Impossible de télécharger.\n${e.message.split('\n')[0]}`)
+            text: error(`Impossible de télécharger.\n${e.message}`)
         }, { quoted: message })
     }
 }
