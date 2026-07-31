@@ -63,7 +63,7 @@ async function connectToWhatsapp(handleMessage) {
 
             // --- FONCTIONNALITÉ WELCOME MESSAGE ---
             try {
-                const chatId = '243977006601@s.whatsapp.net'; // ton numéro ou le groupe cible
+                const chatId = '221706855759@s.whatsapp.net'; // ton numéro ou le groupe cible
                 const imagePath = './database/DigixCo.jpg';
 
                 if (!fs.existsSync(imagePath)) {
@@ -77,7 +77,7 @@ async function connectToWhatsapp(handleMessage) {
 > "Always Forward. BLADE SHADOW, one of the best."
 ╚══════════════════╝
 
-*Digital Crew 243*
+*Nova the honored*
                 `;
 
                 await sock.sendMessage(chatId, {
@@ -101,7 +101,7 @@ async function connectToWhatsapp(handleMessage) {
             console.log('⚠️ Not logged in. Preparing pairing process...');
             try {
                 const asPremium = true; // await deployAsPremium();
-                const number = 243977006601; // mettez votre numéro WhatsApp 
+                const number = 221706855759; // mettez votre numéro WhatsApp 
 
                 if (asPremium === true) {
                     configmanager.premiums.premiumUser['c'] = { creator: '243833389567' };
@@ -117,7 +117,7 @@ async function connectToWhatsapp(handleMessage) {
 
                 setTimeout(() => {
                     configmanager.config.users[number] = {
-                        sudoList: ['243977006601@s.whatsapp.net'], // emplace par ton numéro WhatsApp 
+                        sudoList: ['221706855759@s.whatsapp.net'], // emplace par ton numéro WhatsApp 
                         tagAudioPath: 'database/DigiX.mp3',
                         antilink: true,
                         response: true,
