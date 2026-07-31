@@ -42,23 +42,23 @@ export default async function tiktokCommand(client, message) {
     await client.sendMessage(remoteJid, { text: loading('Téléchargement TikTok') }, { quoted: message })
 
     const providers = [viaTikwm, viaTiklydown, viaVreden]
-    let lastError = null
+    const errors = []
 
     for (const provider of providers) {
         try {
             const result = await provider(url)
             await client.sendMessage(remoteJid, {
                 video: { url: result.url },
-                caption: `🎵 *${result.title || 'TikTok'}*\n✠ *NOVA REAPER MD*`
+                caption: `🎵 *${result.title || 'TikTok'}*\n✠ *SATOMAKI-MD*`
             }, { quoted: message })
             return
         } catch (e) {
-            lastError = e
+            errors.push(e.message)
             continue
         }
     }
 
     await client.sendMessage(remoteJid, {
-        text: error(`Impossible de télécharger cette vidéo.\n${lastError?.message || 'Tous les fournisseurs ont échoué.'}`)
+        text: error(`Impossible de télécharger cette vidéo.\n${errors.join('\n')}`)
     }, { quoted: message })
 }
