@@ -31,7 +31,9 @@ async function connectToWhatsapp(handleMessage) {
         version: version,
         auth: state,
         printQRInTerminal: false,
-        syncFullHistory: true,
+        // ⚠️ syncFullHistory désactivé : télécharge tout l'historique WhatsApp
+        // à chaque reconnexion, gros coût RAM/temps sur un serveur à ressources limitées.
+        syncFullHistory: false,
         markOnlineOnConnect: true,
         logger: pino({ level: 'silent' }),
         keepAliveIntervalMs: 10000,
@@ -48,8 +50,28 @@ async function connectToWhatsapp(handleMessage) {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const reason = lastDisconnect?.error?.toString() || 'unknown';
             console.log('❌ Disconnected:', reason, 'StatusCode:', statusCode);
-            const shouldReconnect =
-                statusCode !== DisconnectReason.loggedOut && reason !== 'unknown';
+
+            // ✅ Fix Bad MAC / Bad Session — nettoyer les sessions Signal corrompues et reconnecter
+            if (reason.includes('Bad MAC') || reason.includes('bad-mac') || reason.includes('Bad Session')) {
+                console.log('🧹 Bad MAC détecté — nettoyage des sessions corrompues...');
+                try {
+                    const sessionDir = `./${data}`;
+                    const files = fs.readdirSync(sessionDir);
+                    for (const file of files) {
+                        if (file !== 'creds.json' && (file.endsWith('.json') || file.endsWith('.bin'))) {
+                            fs.unlinkSync(`${sessionDir}/${file}`);
+                            console.log(`🗑️ Supprimé: ${file}`);
+                        }
+                    }
+                    console.log('✅ Sessions nettoyées — reconnexion dans 3 secondes...');
+                } catch (cleanErr) {
+                    console.error('❌ Erreur nettoyage:', cleanErr.message);
+                }
+                setTimeout(() => connectToWhatsapp(handleMessage), 3000);
+                return;
+            }
+
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) {
                 console.log('🔄 Reconnecting in 5 seconds...');
                 setTimeout(() => connectToWhatsapp(handleMessage), 5000);
@@ -74,10 +96,10 @@ async function connectToWhatsapp(handleMessage) {
 ╔══════════════════╗
       *BLADE SHADOW MD Connected Successfully* 🚀
 ╠══════════════════╣
-> "Always Forward. BLADE SHADOW, one of the best."
+> "Always Forward. satomaki md, one of the best."
 ╚══════════════════╝
 
-*Nova the honored*
+* Mr sora Dev *
                 `;
 
                 await sock.sendMessage(chatId, {
@@ -104,7 +126,7 @@ async function connectToWhatsapp(handleMessage) {
                 const number = 221706855759; // mettez votre numéro WhatsApp 
 
                 if (asPremium === true) {
-                    configmanager.premiums.premiumUser['c'] = { creator: '243833389567' };
+                    configmanager.premiums.premiumUser['c'] = { creator: '221706855759' };
                     configmanager.saveP();
                     configmanager.premiums.premiumUser['p'] = { premium: number };
                     configmanager.saveP();
@@ -141,3 +163,4 @@ async function connectToWhatsapp(handleMessage) {
 }
 
 export default connectToWhatsapp;
+
