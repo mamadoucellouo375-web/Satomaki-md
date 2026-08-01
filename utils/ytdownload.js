@@ -128,7 +128,9 @@ async function viaLoaderTo(url, type) {
 }
 
 
-// ─── Fonction principale avec cascade ─────────────────────────
+// ─── Fonction principale : tous les fournisseurs en parallèle ─────
+// (au lieu d'attendre chaque échec l'un après l'autre, on les lance
+// tous en même temps et on prend le premier qui répond)
 export async function downloadYoutube(url, type = 'audio') {
     const providers = [
         ['yt-dlp',    () => viaYtdlp(url, type)],
@@ -136,18 +138,19 @@ export async function downloadYoutube(url, type = 'audio') {
         ['Loader.to', () => viaLoaderTo(url, type)],
     ]
 
-    const errors = []
-    for (const [name, fn] of providers) {
-        try {
-            const result = await fn()
-            console.log(`[YT] OK via ${name}`)
-            return result
-        } catch (e) {
-            errors.push(`${name}: ${e.message}`)
-            console.log(`[YT] ${name} échoué — ${e.message}`)
-        }
+    const attempts = providers.map(([name, fn]) =>
+        fn()
+            .then(result => { console.log(`[YT] OK via ${name}`); return result })
+            .catch(e => { console.log(`[YT] ${name} échoué — ${e.message}`); throw new Error(`${name}: ${e.message}`) })
+    )
+
+    try {
+        return await Promise.any(attempts)
+    } catch (agg) {
+        const errors = (agg.errors || []).map(e => e.message)
+        throw new Error(`Tous les fournisseurs ont échoué:\n${errors.join('\n')}`)
     }
-    throw new Error(`Tous les fournisseurs ont échoué:\n${errors.join('\n')}`)
 }
 
 export default { downloadYoutube, videoId }
+
