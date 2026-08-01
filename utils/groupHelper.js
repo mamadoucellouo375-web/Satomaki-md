@@ -1,5 +1,6 @@
 // groupHelper.js - Utilitaires partagés pour les commandes de groupe
 import { card, error } from './design.js'
+import { getGroupMetadata } from './metaCache.js'
 
 // Extrait la partie numérique d'un identifiant WhatsApp, peu importe le format
 // (243977006601:16@s.whatsapp.net -> 243977006601 ; 261701031215166@lid -> 261701031215166)
@@ -21,7 +22,7 @@ export async function requireBotAdmin(client, message) {
 
     let meta
     try {
-        meta = await client.groupMetadata(remoteJid)
+        meta = await getGroupMetadata(client, remoteJid)
     } catch (e) {
         await client.sendMessage(remoteJid, { text: error(`Impossible de lire les infos du groupe : ${e.message}`) }, { quoted: message })
         return null
@@ -83,3 +84,4 @@ export function targetIsAdmin(meta, targetId) {
 }
 
 export default { requireBotAdmin, getTarget, targetIsAdmin }
+
