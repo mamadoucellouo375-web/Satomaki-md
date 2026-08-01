@@ -1,6 +1,7 @@
 // protections.js - Système de protections avancées (antinsfw, antiword, antibot, antighost, antibad)
 import configmanager from './configmanager.js'
 import { card } from './design.js'
+import { getGroupMetadata } from './metaCache.js'
 
 // ─── Structure persistante ─────────────────────────────────────
 function cfg(key, def = {}) {
@@ -36,7 +37,7 @@ export async function nsfw(client, message) {
     const body   = message.message?.conversation || message.message?.extendedTextMessage?.text || ''
 
     try {
-        const meta    = await client.groupMetadata(remoteJid)
+        const meta    = await getGroupMetadata(client, remoteJid)
         const isAdmin = meta.participants.find(p => p.id === sender)?.admin
         if (isAdmin) return
     } catch { return }
@@ -78,7 +79,7 @@ export async function badword(client, message) {
     const body   = (message.message?.conversation || message.message?.extendedTextMessage?.text || '').toLowerCase()
 
     try {
-        const meta    = await client.groupMetadata(remoteJid)
+        const meta    = await getGroupMetadata(client, remoteJid)
         const isAdmin = meta.participants.find(p => p.id === sender)?.admin
         if (isAdmin) return
     } catch { return }
@@ -155,7 +156,7 @@ export async function antisticker(client, message) {
 
     const sender = message.key.participant || remoteJid
     try {
-        const meta    = await client.groupMetadata(remoteJid)
+        const meta    = await getGroupMetadata(client, remoteJid)
         const isAdmin = meta.participants.find(p => p.id === sender)?.admin
         if (isAdmin) return
     } catch { return }
