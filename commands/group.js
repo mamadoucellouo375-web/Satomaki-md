@@ -1,7 +1,8 @@
-// group.js - Commandes admin/groupe NOVA REAPER MD
+// group.js - Commandes admin/groupe SATOMAKI-MD
 import { card, success, error, loading } from '../utils/design.js'
 import configmanager from '../utils/configmanager.js'
 import { requireBotAdmin, getTarget, targetIsAdmin } from '../utils/groupHelper.js'
+import { getGroupMetadata, invalidate } from '../utils/metaCache.js'
 
 // ─── Antilink (état persistant par groupe) ─────────────────────
 function getAntilinkGroups() {
@@ -40,7 +41,7 @@ export async function linkDetection(client, message) {
     const hasLink = /(https?:\/\/|whatsapp\.com\/|t\.me\/|wa\.me\/)/i.test(body)
     if (!hasLink || message.key.fromMe) return
     try {
-        const meta   = await client.groupMetadata(remoteJid)
+        const meta   = await getGroupMetadata(client, remoteJid)
         const sender = message.key.participant || remoteJid
         if (meta.participants.find(p => p.id === sender)?.admin) return
         await client.sendMessage(remoteJid, { delete: message.key })
@@ -160,11 +161,12 @@ export async function kick(client, message) {
     // Vérifier si la cible est admin
     if (targetIsAdmin(ctx.meta, target)) {
         // D'abord la détrograder
-        try { await client.groupParticipantsUpdate(remoteJid, [target], 'demote') } catch {}
+        try { await client.groupParticipantsUpdate(remoteJid, [target], 'demote'); invalidate(remoteJid) } catch {}
         await new Promise(r => setTimeout(r, 500))
     }
     try {
         await client.groupParticipantsUpdate(remoteJid, [target], 'remove')
+        invalidate(remoteJid)
         await client.sendMessage(remoteJid, {
             text: card('EXCLUSION', [`Membre : @${target.split('@')[0]}`, 'Statut : Expulsé ✅']),
             mentions: [target]
@@ -184,7 +186,7 @@ export async function kickall(client, message) {
         return client.sendMessage(remoteJid, { text: card('KICKALL', ['Aucun membre non-admin à expulser.']) }, { quoted: message })
     await client.sendMessage(remoteJid, { text: loading(`Expulsion de ${targets.length} membres`) }, { quoted: message })
     for (const p of targets) {
-        try { await client.groupParticipantsUpdate(remoteJid, [p.id], 'remove') } catch {}
+        try { await client.groupParticipantsUpdate(remoteJid, [p.id], 'remove'); invalidate(remoteJid) } catch {}
         await new Promise(r => setTimeout(r, 500))
     }
     await client.sendMessage(remoteJid, { text: success(`${targets.length} membres expulsés.`) }, { quoted: message })
@@ -200,8 +202,10 @@ export async function kickall2(client, message) {
     for (const p of targets) {
         try {
             if (p.admin) await client.groupParticipantsUpdate(remoteJid, [p.id], 'demote')
+        invalidate(remoteJid)
             await new Promise(r => setTimeout(r, 300))
             await client.groupParticipantsUpdate(remoteJid, [p.id], 'remove')
+        invalidate(remoteJid)
         } catch {}
         await new Promise(r => setTimeout(r, 400))
     }
@@ -217,6 +221,7 @@ export async function promote(client, message) {
     if (!target) return
     try {
         await client.groupParticipantsUpdate(remoteJid, [target], 'promote')
+        invalidate(remoteJid)
         await client.sendMessage(remoteJid, {
             text: card('PROMOTION', [`Membre : @${target.split('@')[0]}`, 'Rôle   : Admin 👑']),
             mentions: [target]
@@ -237,6 +242,7 @@ export async function demote(client, message) {
         return client.sendMessage(remoteJid, { text: error('Ce membre n\'est pas admin.') }, { quoted: message })
     try {
         await client.groupParticipantsUpdate(remoteJid, [target], 'demote')
+        invalidate(remoteJid)
         await client.sendMessage(remoteJid, {
             text: card('RÉTROGRADATION', [`Membre : @${target.split('@')[0]}`, 'Rôle   : Membre 👤']),
             mentions: [target]
@@ -254,7 +260,7 @@ export async function pall(client, message) {
     const targets = ctx.meta.participants.filter(p => !p.admin)
     await client.sendMessage(remoteJid, { text: loading(`Promotion de ${targets.length} membres`) }, { quoted: message })
     for (const p of targets) {
-        try { await client.groupParticipantsUpdate(remoteJid, [p.id], 'promote') } catch {}
+        try { await client.groupParticipantsUpdate(remoteJid, [p.id], 'promote'); invalidate(remoteJid) } catch {}
         await new Promise(r => setTimeout(r, 500))
     }
     await client.sendMessage(remoteJid, { text: success(`${targets.length} membres promus admins.`) }, { quoted: message })
@@ -270,7 +276,7 @@ export async function dall(client, message) {
         return client.sendMessage(remoteJid, { text: card('DEMOTE ALL', ['Aucun admin à rétrograder.']) }, { quoted: message })
     await client.sendMessage(remoteJid, { text: loading(`Rétrogradation de ${targets.length} admins`) }, { quoted: message })
     for (const p of targets) {
-        try { await client.groupParticipantsUpdate(remoteJid, [p.id], 'demote') } catch {}
+        try { await client.groupParticipantsUpdate(remoteJid, [p.id], 'demote'); invalidate(remoteJid) } catch {}
         await new Promise(r => setTimeout(r, 500))
     }
     await client.sendMessage(remoteJid, { text: success(`${targets.length} admins rétrogradés.`) }, { quoted: message })
@@ -327,7 +333,7 @@ export async function bye(client, message) {
     if (!remoteJid.includes('@g.us')) return
     try {
         await client.sendMessage(remoteJid, {
-            text: card('AU REVOIR', ['NOVA REAPER MD quitte ce groupe.', "L'Empire avance."])
+            text: card('AU REVOIR', ['SATOMAKI-MD quitte ce groupe.', "L'Empire avance."])
         }, { quoted: message })
         await client.groupLeave(remoteJid)
     } catch (e) { await client.sendMessage(remoteJid, { text: error(e.message) }, { quoted: message }) }
