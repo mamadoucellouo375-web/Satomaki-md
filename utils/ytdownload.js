@@ -82,35 +82,44 @@ async function viaCobalt(url, type) {
 
 // SaveTube (media.savetube.me) et YtMp3 (yt-download.org) sont morts :
 // DNS injoignable / TLS cassé. Retirés en attendant un remplaçant fiable.
+// y2down.cc a aussi changé d'architecture, l'ancien endpoint /api/json renvoie 404 :
+// retiré en attendant de retrouver le bon format d'API.
 
-// ─── y2down API ────────────────────────────────────────────
-async function viaY2down(url, type) {
-    const id = videoId(url)
-    if (!id) throw new Error('ID introuvable')
-    const res = await axios.get(`https://y2down.cc/api/json?type=${type === 'audio' ? 'mp3' : 'mp4'}&vid=${id}`, {
-        timeout: 20000, headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://y2down.cc/' }
-    })
-    const link = res.data?.url || res.data?.dlink
-    if (!link?.startsWith('http')) throw new Error(`y2down: pas de lien (reponse: ${JSON.stringify(res.data).slice(0,200)})`)
-    const dest = tmpPath(type)
-    await saveStream(link, dest)
-    if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('y2down: fichier invalide') }
-    return dest
-}
-
-// ─── Loader.to ─────────────────────────────────────────────
+// ─── Loader.to (API asynchrone : on initie puis on interroge progress_url) ──
 async function viaLoaderTo(url, type) {
     const id = videoId(url)
     if (!id) throw new Error('ID introuvable')
     const fmt = type === 'audio' ? 'mp3' : 'mp4'
-    const res = await axios.get(
+
+    const initRes = await axios.get(
         `https://loader.to/ajax/download.php?format=${fmt}&url=${encodeURIComponent(`https://youtu.be/${id}`)}`,
         { timeout: 25000, headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://loader.to/' } }
     )
-    const link = res.data?.download_url || res.data?.url
+
+    // Cas rare : lien direct dès la première réponse
+    let link = initRes.data?.download_url || initRes.data?.url
+    const progressUrl = initRes.data?.progress_url
+
+    if (!link && progressUrl) {
+        // Polling : on interroge progress_url jusqu'à ce que le fichier soit prêt (max ~40s)
+        for (let i = 0; i < 20; i++) {
+            await new Promise(r => setTimeout(r, 2000))
+            try {
+                const p = await axios.get(progressUrl, { timeout: 10000 })
+                const data = p.data
+                link = data?.download_url || data?.url
+                if (link) break
+                if (data?.progress >= 1000 || data?.success === 1 || data?.success === true) {
+                    link = data?.download_url || data?.url
+                    if (link) break
+                }
+            } catch { /* on continue de poller */ }
+        }
+    }
+
     if (!link?.startsWith('http')) {
-        console.error('Loader.to reponse brute:', JSON.stringify(res.data).slice(0, 300))
-        throw new Error(`Loader.to: pas de lien (reponse: ${JSON.stringify(res.data).slice(0,200)})`)
+        console.error('Loader.to reponse finale:', JSON.stringify(initRes.data).slice(0, 300))
+        throw new Error('Loader.to: fichier jamais prêt (timeout de polling)')
     }
     const dest = tmpPath(type)
     await saveStream(link, dest)
@@ -124,7 +133,6 @@ export async function downloadYoutube(url, type = 'audio') {
     const providers = [
         ['yt-dlp',    () => viaYtdlp(url, type)],
         ['Cobalt',    () => viaCobalt(url, type)],
-        ['y2down',    () => viaY2down(url, type)],
         ['Loader.to', () => viaLoaderTo(url, type)],
     ]
 
