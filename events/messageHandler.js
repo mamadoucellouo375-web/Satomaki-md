@@ -8,7 +8,7 @@ import prot from '../utils/protections.js'
 import { antinsfw, antibot, antisticker, antiword, protections } from '../commands/protection.js'
 import ownerCmds from '../commands/owner.js'
 
-// ─── Imports BLADE SHADOW ────────────────────────────────────────
+// ─── Imports SATOMAKI-MD ────────────────────────────────────────
 import group, { mute, unmute, bye, setJoin, pall, dall } from '../commands/group.js'
 import block from '../commands/block.js'
 import viewonce from '../commands/viewonce.js'
@@ -20,6 +20,7 @@ import take from '../commands/take.js'
 import sticker from '../commands/sticker.js'
 import img from '../commands/img.js'
 import url from '../commands/url.js'
+import dl from '../commands/dl.js'
 import sender from '../commands/sender.js'
 import bug from '../commands/bug.js'
 import dlt from '../commands/dlt.js'
@@ -102,8 +103,8 @@ function buildCommandMap(client) {
         ['uptime',      (c,m) => uptime(c,m)],
         ['menu',        (c,m) => info(c,m)],
         ['setmenu',     (c,m) => setmenu(c,m)],
-        ['alive',       (c,m) => c.sendMessage(m.key.remoteJid,{text:`✠ *NOVA REAPER MD* est en ligne !\n. Préfixe : ${configmanager.config.users[c.user.id.split(':')[0]]?.prefix||'.'}\n⚔️ Dev : *(꧁⚡𝕹𝖔𝖛𝖆_𝕾𝖆𝖙𝖔𝖒𝖆𝖐𝖎⚡꧂)*`},{quoted:m})],
-        ['test',        (c,m) => c.sendMessage(m.key.remoteJid,{text:'✅ NOVA REAPER MD fonctionne parfaitement !'},{quoted:m})],
+        ['alive',       (c,m) => c.sendMessage(m.key.remoteJid,{text:`✠ *SATOMAKI-MD* est en ligne !\n. Préfixe : ${configmanager.config.users[c.user.id.split(':')[0]]?.prefix||'.'}\n⚔️ Dev : *(꧁⚡𝕹𝖔𝖛𝖆_𝕾𝖆𝖙𝖔𝖒𝖆𝖐𝖎⚡꧂)*`},{quoted:m})],
+        ['test',        (c,m) => c.sendMessage(m.key.remoteJid,{text:'✅ SATOMAKI-MD fonctionne parfaitement !'},{quoted:m})],
         ['speed',       (c,m) => infoCmds.speed(c,m)],
         ['stats',       (c,m) => statsCommand(c,m)],
         ['warn',        (c,m) => warnUser(c,m)],
@@ -155,6 +156,7 @@ function buildCommandMap(client) {
         ['tiktok',      (c,m) => tiktok(c,m)],
         ['audiourl',    (c,m) => url(c,m)],
         ['url',         (c,m) => url(c,m)],
+        ['dl',          (c,m) => dl(c,m)],
         ['yt',          (c,m) => ytCommand(c,m)],
         ['ytdl',        (c,m) => ytdlCommand(c,m)],
         ['vocal',       (c,m) => vocalCommand(c,m)],
@@ -294,7 +296,7 @@ function buildCommandMap(client) {
             const txt = m.message?.conversation || m.message?.extendedTextMessage?.text || ''
             const args = txt.trim().split(/\s+/).slice(1)
             const count = Math.min(parseInt(args[0])||5, 20)
-            const msg = args.slice(1).join(' ') || '🔥 NOVA REAPER MD'
+            const msg = args.slice(1).join(' ') || '🔥 SATOMAKI-MD'
             for (let i=0;i<count;i++) await c.sendMessage(m.key.remoteJid,{text:msg})
         }],
 
@@ -321,7 +323,7 @@ function buildCommandMap(client) {
 
 // ─── Anti-spam : cooldown par utilisateur+commande ─────────────
 const cooldowns = new Map()
-const HEAVY_CMDS = new Set(['song','yt','ytdl','play','tiktok','nova','gpt','darkgpt','alya','gen','gif','vocal'])
+const HEAVY_CMDS = new Set(['song','yt','ytdl','play','tiktok','dl','nova','gpt','darkgpt','alya','gen','gif','vocal'])
 
 function checkCooldown(userId, command) {
     const key = `${userId}:${command}`
