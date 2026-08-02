@@ -28,7 +28,24 @@ async function saveStream(remoteUrl, dest) {
 }
 
 function validFile(dest) {
-    try { return fs.statSync(dest).size > 5000 } catch { return false }
+    try {
+        const stat = fs.statSync(dest)
+        if (stat.size <= 5000) return false
+
+        // Vérifier que ce n'est pas une page d'erreur JSON/HTML sauvegardée par erreur
+        // (les APIs gratuites renvoient parfois une erreur au lieu du vrai fichier)
+        const fd = fs.openSync(dest, 'r')
+        const buf = Buffer.alloc(32)
+        const bytesRead = fs.readSync(fd, buf, 0, 32, 0)
+        fs.closeSync(fd)
+
+        const head = buf.toString('utf8', 0, bytesRead).trim().toLowerCase()
+        if (head.startsWith('<') || head.startsWith('{') || head.startsWith('[') ||
+            head.startsWith('html') || head.includes('doctype') || head.includes('<?xml')) {
+            return false
+        }
+        return true
+    } catch { return false }
 }
 
 // ─── 1. yt-dlp (si installé sur le serveur) ───────────────────
