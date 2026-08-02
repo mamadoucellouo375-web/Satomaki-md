@@ -3,6 +3,7 @@
 // Videy, Mega, SoundCloud, Spotify, YouTube, Sfile, MediaFire
 import axios from 'axios'
 import { card, error, loading } from '../utils/design.js'
+import { pickBestMediaUrl } from '../utils/extractMediaUrl.js'
 
 const TT  = /(?<!\S)https?:\/\/(www\.)?(vm\.|vt\.|m\.)?tiktok\.com\/[^\s]+(?=\s|$)/i
 const IG  = /https?:\/\/(www\.)?instagram\.com\/[^\s]+/i
@@ -58,7 +59,11 @@ async function pin(url) {
 }
 async function fb(url) {
     const { data: d } = await axios.get(`https://api-faa.my.id/faa/fbdownload?url=${encodeURIComponent(url)}`)
-    if (!d.status || !d.result?.media) throw new Error(d.message || 'Erreur API Facebook')
+    if (!d.status || !d.result?.media) {
+        const fallback = pickBestMediaUrl(d)
+        if (fallback) return { video_hd: fallback }
+        throw new Error(d.message || 'Erreur API Facebook')
+    }
     return d.result.media
 }
 async function tw(url) {
