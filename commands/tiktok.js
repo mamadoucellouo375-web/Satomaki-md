@@ -15,6 +15,17 @@ async function viaTikwm(url) {
     return { url: videoUrl.startsWith('http') ? videoUrl : `https://tikwm.com${videoUrl}`, title: d?.title }
 }
 
+async function viaRyzumiTiktok(url) {
+    const res = await axios.get('https://api.ryzumi.net/api/downloader/tiktok', {
+        params: { url }, timeout: 15000
+    })
+    const d = res.data?.data
+    if (res.data?.code !== 0 || !d) throw new Error(res.data?.msg || 'Ryzumi: pas de données')
+    const videoUrl = d.play || d.wmplay
+    if (!videoUrl?.startsWith('http')) throw new Error('Ryzumi: pas de lien')
+    return { url: videoUrl, title: d.title }
+}
+
 // tiklydown (api.tiklydown.eu.org) et vreden (api.vreden.my.id) sont morts :
 // domaines DNS injoignables / certificat pointant vers un autre service.
 // Retirés en attendant un fournisseur de remplacement fiable.
@@ -30,7 +41,7 @@ export default async function tiktokCommand(client, message) {
 
     await client.sendMessage(remoteJid, { text: loading('Téléchargement TikTok') }, { quoted: message })
 
-    const providers = [viaTikwm]
+    const providers = [viaTikwm, viaRyzumiTiktok]
     const errors = []
 
     for (const provider of providers) {
@@ -51,4 +62,3 @@ export default async function tiktokCommand(client, message) {
         text: error(`Impossible de télécharger cette vidéo.\n${errors.join('\n')}`)
     }, { quoted: message })
 }
-
