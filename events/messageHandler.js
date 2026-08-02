@@ -21,6 +21,7 @@ import sticker from '../commands/sticker.js'
 import img from '../commands/img.js'
 import url from '../commands/url.js'
 import dl from '../commands/dl.js'
+import stickerdl from '../commands/stickerdl.js'
 import sender from '../commands/sender.js'
 import bug from '../commands/bug.js'
 import dlt from '../commands/dlt.js'
@@ -157,6 +158,7 @@ function buildCommandMap(client) {
         ['audiourl',    (c,m) => url(c,m)],
         ['url',         (c,m) => url(c,m)],
         ['dl',          (c,m) => dl(c,m)],
+        ['stickerdl',   (c,m) => stickerdl(c,m)],
         ['yt',          (c,m) => ytCommand(c,m)],
         ['ytdl',        (c,m) => ytdlCommand(c,m)],
         ['vocal',       (c,m) => vocalCommand(c,m)],
@@ -323,7 +325,7 @@ function buildCommandMap(client) {
 
 // ─── Anti-spam : cooldown par utilisateur+commande ─────────────
 const cooldowns = new Map()
-const HEAVY_CMDS = new Set(['song','yt','ytdl','play','tiktok','dl','nova','gpt','darkgpt','alya','gen','gif','vocal'])
+const HEAVY_CMDS = new Set(['song','yt','ytdl','play','tiktok','dl','stickerdl','nova','gpt','darkgpt','alya','gen','gif','vocal'])
 
 function checkCooldown(userId, command) {
     const key = `${userId}:${command}`
