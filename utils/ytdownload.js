@@ -136,6 +136,18 @@ async function viaLoaderTo(url, type) {
 // ─── Fonction principale : tous les fournisseurs en parallèle ─────
 // (au lieu d'attendre chaque échec l'un après l'autre, on les lance
 // tous en même temps et on prend le premier qui répond)
+async function viaRyzumi(url, type) {
+    if (type !== 'audio') throw new Error('Ryzumi: audio uniquement')
+    const res = await axios.get(`https://api.ryzumi.net/api/downloader/ytmp3?url=${encodeURIComponent(url)}`, { timeout: 20000 })
+    const d = res.data
+    const link = d?.videoUrl || d?.url
+    if (!link?.startsWith('http')) throw new Error('Ryzumi: pas de lien')
+    const dest = tmpPath(type)
+    await saveStream(link, dest)
+    if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('Ryzumi: fichier invalide') }
+    return dest
+}
+
 async function viaNexray(url, type) {
     if (type !== 'audio') throw new Error('Nexray: audio uniquement')
     const res = await axios.get(`https://api.nexray.web.id/downloader/ytmp3?url=${encodeURIComponent(url)}`, { timeout: 20000 })
@@ -150,6 +162,7 @@ async function viaNexray(url, type) {
 export async function downloadYoutube(url, type = 'audio') {
     const providers = [
         ['yt-dlp',    () => viaYtdlp(url, type)],
+        ['Ryzumi',    () => viaRyzumi(url, type)],
         ['Nexray',    () => viaNexray(url, type)],
         ['Cobalt',    () => viaCobalt(url, type)],
         ['Loader.to', () => viaLoaderTo(url, type)],
