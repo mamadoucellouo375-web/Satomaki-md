@@ -58,13 +58,22 @@ async function pin(url) {
     return d.result.medias
 }
 async function fb(url) {
-    const { data: d } = await axios.get(`https://api-faa.my.id/faa/fbdownload?url=${encodeURIComponent(url)}`)
-    if (!d.status || !d.result?.media) {
-        const fallback = pickBestMediaUrl(d)
-        if (fallback) return { video_hd: fallback }
-        throw new Error(d.message || 'Erreur API Facebook')
-    }
-    return d.result.media
+    try {
+        const { data: d } = await axios.get(`https://api-faa.my.id/faa/fbdownload?url=${encodeURIComponent(url)}`)
+        if (d.status && d.result?.media) return d.result.media
+    } catch {}
+    // Fallback : Ryzumi API (schéma result.media.videos[]/images[])
+    let d2
+    try {
+        d2 = (await axios.get(`https://api.ryzumi.net/api/downloader/facebook?url=${encodeURIComponent(url)}`)).data
+        const vids = d2?.result?.media?.videos
+        const imgs = d2?.result?.media?.images
+        if (vids?.length) return { video_hd: vids[0].url }
+        if (imgs?.length) return { photo_image: imgs[0].url }
+    } catch {}
+    const fallback = pickBestMediaUrl(d2)
+    if (fallback) return { video_hd: fallback }
+    throw new Error('Erreur API Facebook (tous les fournisseurs ont échoué)')
 }
 async function tw(url) {
     const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/twitter?url=${encodeURIComponent(url)}`)
@@ -77,9 +86,14 @@ async function vd(url) {
     return d.result
 }
 async function mf(url) {
-    const { data: d } = await axios.get(`https://api-faa.my.id/faa/mediafire?url=${encodeURIComponent(url)}`)
-    if (!d.status || !d.result) throw new Error(d.message || 'Erreur API MediaFire')
-    return d.result
+    try {
+        const { data: d } = await axios.get(`https://api-faa.my.id/faa/mediafire?url=${encodeURIComponent(url)}`)
+        if (d.status && d.result) return d.result
+    } catch {}
+    // Fallback : Ryzumi API (schéma différent : data.filename/filesize/downloadUrl)
+    const { data: d2 } = await axios.get(`https://api.ryzumi.net/api/downloader/mediafire?url=${encodeURIComponent(url)}`)
+    if (!d2?.status || !d2.data?.downloadUrl) throw new Error(d2?.error || d2?.message || 'Erreur API MediaFire')
+    return { download_url: d2.data.downloadUrl, filename: d2.data.filename, size: d2.data.filesize }
 }
 async function th(url) {
     const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/threads?url=${encodeURIComponent(url)}`)
