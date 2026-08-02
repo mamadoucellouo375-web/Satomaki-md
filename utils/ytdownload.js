@@ -3,6 +3,7 @@ import axios from 'axios'
 import fs from 'fs'
 import path from 'path'
 import { exec } from 'child_process'
+import { pickBestMediaUrl } from './extractMediaUrl.js'
 
 function videoId(url) {
     const m = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
@@ -107,15 +108,19 @@ async function viaLoaderTo(url, type) {
             try {
                 const p = await axios.get(progressUrl, { timeout: 10000 })
                 const data = p.data
-                link = data?.download_url || data?.url
+                link = data?.download_url || data?.url || pickBestMediaUrl(data)
                 if (link) break
                 if (data?.progress >= 1000 || data?.success === 1 || data?.success === true) {
-                    link = data?.download_url || data?.url
+                    link = data?.download_url || data?.url || pickBestMediaUrl(data)
                     if (link) break
                 }
             } catch { /* on continue de poller */ }
         }
     }
+
+    // Filet de sécurité : si les champs habituels ont changé de nom, on cherche
+    // n'importe quelle URL exploitable dans la réponse brute avant d'abandonner.
+    if (!link) link = pickBestMediaUrl(initRes.data)
 
     if (!link?.startsWith('http')) {
         console.error('Loader.to reponse finale:', JSON.stringify(initRes.data).slice(0, 300))
