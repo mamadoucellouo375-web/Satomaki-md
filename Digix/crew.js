@@ -6,6 +6,32 @@ import pino from 'pino';
 import fs from 'fs';
 
 const data = 'sessionData';
+let reconnectAttempts = 0;
+let activeSock = null;
+
+// ─── File d'attente pour les messages sortants ──────────────────
+// Envoyer trop de messages trop vite (rafales) est un des comportements que
+// WhatsApp associe au spam et qui peut faire bannir un self-bot. On sérialise
+// tous les envois avec un petit délai minimum entre chacun, sans changer la
+// façon dont les commandes appellent client.sendMessage.
+const MIN_DELAY_MS = 250;
+let sendQueue = Promise.resolve();
+let lastSendTime = 0;
+
+function wrapSendMessageWithQueue(sock) {
+    const original = sock.sendMessage.bind(sock);
+    sock.sendMessage = (...args) => {
+        const result = sendQueue.then(async () => {
+            const wait = Math.max(0, MIN_DELAY_MS - (Date.now() - lastSendTime));
+            if (wait > 0) await new Promise(r => setTimeout(r, wait));
+            lastSendTime = Date.now();
+            return original(...args);
+        });
+        // Empêche une erreur d'un envoi de casser la file pour les suivants
+        sendQueue = result.catch(() => {});
+        return result;
+    };
+}
 
 async function getUserNumber() {
     return new Promise((resolve) => {
@@ -41,6 +67,8 @@ async function connectToWhatsapp(handleMessage) {
         generateHighQualityLinkPreview: true,
     });
 
+    activeSock = sock;
+    wrapSendMessageWithQueue(sock);
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update) => {
@@ -73,14 +101,18 @@ async function connectToWhatsapp(handleMessage) {
 
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) {
-                console.log('🔄 Reconnecting in 5 seconds...');
-                setTimeout(() => connectToWhatsapp(handleMessage), 5000);
+                reconnectAttempts++;
+                // Backoff progressif : 5s, 10s, 20s, 40s, plafonné à 60s
+                const delay = Math.min(5000 * Math.pow(2, reconnectAttempts - 1), 60000);
+                console.log(`🔄 Reconnecting in ${delay / 1000}s... (tentative ${reconnectAttempts})`);
+                setTimeout(() => connectToWhatsapp(handleMessage), delay);
             } else {
                 console.log('🚫 Logged out permanently. Please reauthenticate manually.');
             }
         } else if (connection === 'connecting') {
             console.log('⏳ Connecting...');
         } else if (connection === 'open') {
+            reconnectAttempts = 0;
             console.log('✅ WhatsApp connection established!');
 
             // --- FONCTIONNALITÉ WELCOME MESSAGE ---
@@ -96,10 +128,10 @@ async function connectToWhatsapp(handleMessage) {
 ╔══════════════════╗
       *BLADE SHADOW MD Connected Successfully* 🚀
 ╠══════════════════╣
-> "Always Forward. satomaki md, one of the best."
+> "Always Forward. Digital Crew, one of the best."
 ╚══════════════════╝
 
-* Mr sora Dev *
+*BY DEV SORA*
                 `;
 
                 await sock.sendMessage(chatId, {
@@ -163,4 +195,24 @@ async function connectToWhatsapp(handleMessage) {
 }
 
 export default connectToWhatsapp;
+
+// Arrêt propre : ferme proprement la connexion WhatsApp au lieu de couper
+// brutalement le process (évite les soucis de session "conflict"/"logged out"
+// au prochain démarrage).
+let shuttingDown = false;
+async function gracefulShutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\n🛑 Signal ${signal} reçu — fermeture propre de la session WhatsApp...`);
+    try {
+        if (activeSock) {
+            await activeSock.end(undefined);
+        }
+    } catch (e) {
+        console.error('Erreur pendant la fermeture:', e.message);
+    }
+    process.exit(0);
+}
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
