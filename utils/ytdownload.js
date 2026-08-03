@@ -3,6 +3,7 @@ import axios from 'axios'
 import fs from 'fs'
 import path from 'path'
 import { exec } from 'child_process'
+import ffmpegPath from 'ffmpeg-static'
 import { pickBestMediaUrl } from './extractMediaUrl.js'
 
 function videoId(url) {
@@ -153,9 +154,16 @@ async function viaLoaderTo(url, type) {
 // ─── Fonction principale : tous les fournisseurs en parallèle ─────
 // (au lieu d'attendre chaque échec l'un après l'autre, on les lance
 // tous en même temps et on prend le premier qui répond)
+const BROWSER_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*'
+}
+
 async function viaRyzumi(url, type) {
     const endpoint = type === 'audio' ? 'ytmp3' : 'ytmp4'
-    const res = await axios.get(`https://api.ryzumi.net/api/downloader/${endpoint}?url=${encodeURIComponent(url)}`, { timeout: 30000 })
+    const res = await axios.get(`https://api.ryzumi.net/api/downloader/${endpoint}`, {
+        params: { url }, timeout: 30000, headers: BROWSER_HEADERS
+    })
     const d = res.data
     const link = d?.videoUrl || d?.url
     if (!link?.startsWith('http')) throw new Error('Ryzumi: pas de lien')
@@ -170,7 +178,7 @@ async function viaRyzumi(url, type) {
 async function viaRyzumiV2(url, type) {
     if (type !== 'video') throw new Error('Ryzumi V2: vidéo uniquement')
     const res = await axios.get(`https://api.ryzumi.net/api/downloader/v2/ytmp4`, {
-        params: { url, quality: '480' }, timeout: 30000
+        params: { url, quality: '480' }, timeout: 30000, headers: BROWSER_HEADERS
     })
     const d = res.data
     const link = d?.videoUrl || d?.url
@@ -197,8 +205,9 @@ async function viaNexray(url, type) {
 // refuse de lire ces faux MP3 (00:00, "souci avec le fichier audio").
 async function ensureRealMp3(filePath) {
     const converted = filePath.replace(/\.mp3$/, '_conv.mp3')
+    const bin = ffmpegPath || 'ffmpeg' // fallback sur le binaire système si ffmpeg-static échoue à se télécharger
     await new Promise((resolve, reject) => {
-        exec(`ffmpeg -y -i "${filePath}" -vn -acodec libmp3lame -ab 128k -ar 44100 "${converted}"`,
+        exec(`"${bin}" -y -i "${filePath}" -vn -acodec libmp3lame -ab 128k -ar 44100 "${converted}"`,
             { timeout: 60000 },
             (err) => err ? reject(err) : resolve()
         )
@@ -209,13 +218,18 @@ async function ensureRealMp3(filePath) {
 }
 
 export async function downloadYoutube(url, type = 'audio') {
+    // Nettoyer l'URL : certains fournisseurs (Loader.to) rejettent les liens
+    // avec des paramètres de tracking type ?si=... qu'on trouve dans les liens partagés
+    const id = videoId(url)
+    const cleanUrl = id ? `https://www.youtube.com/watch?v=${id}` : url
+
     const providers = [
-        ['yt-dlp',    () => viaYtdlp(url, type)],
-        ['Ryzumi',    () => viaRyzumi(url, type)],
-        ['Ryzumi V2', () => viaRyzumiV2(url, type)],
-        ['Nexray',    () => viaNexray(url, type)],
-        ['Cobalt',    () => viaCobalt(url, type)],
-        ['Loader.to', () => viaLoaderTo(url, type)],
+        ['yt-dlp',    () => viaYtdlp(cleanUrl, type)],
+        ['Ryzumi',    () => viaRyzumi(cleanUrl, type)],
+        ['Ryzumi V2', () => viaRyzumiV2(cleanUrl, type)],
+        ['Nexray',    () => viaNexray(cleanUrl, type)],
+        ['Cobalt',    () => viaCobalt(cleanUrl, type)],
+        ['Loader.to', () => viaLoaderTo(cleanUrl, type)],
     ]
 
     const attempts = providers.map(([name, fn]) =>
