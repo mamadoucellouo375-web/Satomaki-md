@@ -2,11 +2,11 @@
   "name": "BLADE SHADOW MD",
   "version": "1.0.0",
   "description": "Digital Crew WhatsApp Bot — a powerful, fun and intelligent bot packed with extra features, AI capabilities and a sleek futuristic design",
-  "main": "index.js",
+  "main": "boot.js",
   "type": "module",
   "scripts": {
     "test": "node test.js",
-    "start": "node index.js"
+    "start": "node boot.js"
   },
   "keywords": [
     "whatsapp",
@@ -33,3 +33,4 @@
   "author": "MRsato",
   "license": "ISC"
 }
+
