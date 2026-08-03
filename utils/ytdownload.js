@@ -154,14 +154,30 @@ async function viaLoaderTo(url, type) {
 // (au lieu d'attendre chaque échec l'un après l'autre, on les lance
 // tous en même temps et on prend le premier qui répond)
 async function viaRyzumi(url, type) {
-    if (type !== 'audio') throw new Error('Ryzumi: audio uniquement')
-    const res = await axios.get(`https://api.ryzumi.net/api/downloader/ytmp3?url=${encodeURIComponent(url)}`, { timeout: 20000 })
+    const endpoint = type === 'audio' ? 'ytmp3' : 'ytmp4'
+    const res = await axios.get(`https://api.ryzumi.net/api/downloader/${endpoint}?url=${encodeURIComponent(url)}`, { timeout: 30000 })
     const d = res.data
     const link = d?.videoUrl || d?.url
     if (!link?.startsWith('http')) throw new Error('Ryzumi: pas de lien')
     const dest = tmpPath(type)
     await saveStream(link, dest)
     if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('Ryzumi: fichier invalide') }
+    return dest
+}
+
+// Ryzumi V2 : endpoint alternatif pour la vidéo (plus de redondance, la vidéo
+// étant le format le moins bien couvert par les autres fournisseurs)
+async function viaRyzumiV2(url, type) {
+    if (type !== 'video') throw new Error('Ryzumi V2: vidéo uniquement')
+    const res = await axios.get(`https://api.ryzumi.net/api/downloader/v2/ytmp4`, {
+        params: { url, quality: '480' }, timeout: 30000
+    })
+    const d = res.data
+    const link = d?.videoUrl || d?.url
+    if (!link?.startsWith('http')) throw new Error('Ryzumi V2: pas de lien')
+    const dest = tmpPath(type)
+    await saveStream(link, dest)
+    if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('Ryzumi V2: fichier invalide') }
     return dest
 }
 
@@ -196,6 +212,7 @@ export async function downloadYoutube(url, type = 'audio') {
     const providers = [
         ['yt-dlp',    () => viaYtdlp(url, type)],
         ['Ryzumi',    () => viaRyzumi(url, type)],
+        ['Ryzumi V2', () => viaRyzumiV2(url, type)],
         ['Nexray',    () => viaNexray(url, type)],
         ['Cobalt',    () => viaCobalt(url, type)],
         ['Loader.to', () => viaLoaderTo(url, type)],
