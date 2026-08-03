@@ -176,6 +176,22 @@ async function viaNexray(url, type) {
     return dest
 }
 
+// Reconvertit en vrai MP3 avec ffmpeg : certains fournisseurs renvoient le flux
+// audio brut de YouTube (.m4a/opus) qu'on ne fait que renommer en .mp3 — WhatsApp
+// refuse de lire ces faux MP3 (00:00, "souci avec le fichier audio").
+async function ensureRealMp3(filePath) {
+    const converted = filePath.replace(/\.mp3$/, '_conv.mp3')
+    await new Promise((resolve, reject) => {
+        exec(`ffmpeg -y -i "${filePath}" -vn -acodec libmp3lame -ab 128k -ar 44100 "${converted}"`,
+            { timeout: 60000 },
+            (err) => err ? reject(err) : resolve()
+        )
+    })
+    if (!validFile(converted)) throw new Error('ffmpeg: conversion invalide')
+    try { fs.unlinkSync(filePath) } catch {}
+    return converted
+}
+
 export async function downloadYoutube(url, type = 'audio') {
     const providers = [
         ['yt-dlp',    () => viaYtdlp(url, type)],
@@ -191,13 +207,24 @@ export async function downloadYoutube(url, type = 'audio') {
             .catch(e => { console.log(`[YT] ${name} échoué — ${e.message}`); throw new Error(`${name}: ${e.message}`) })
     )
 
+    let filePath
     try {
-        return await Promise.any(attempts)
+        filePath = await Promise.any(attempts)
     } catch (agg) {
         const errors = (agg.errors || []).map(e => e.message)
         throw new Error(`Tous les fournisseurs ont échoué:\n${errors.join('\n')}`)
     }
+
+    if (type === 'audio') {
+        try {
+            filePath = await ensureRealMp3(filePath)
+            console.log('[YT] Conversion ffmpeg OK')
+        } catch (e) {
+            console.log('[YT] ffmpeg indisponible ou échoué, envoi du fichier brut:', e.message)
+        }
+    }
+
+    return filePath
 }
 
 export default { downloadYoutube, videoId }
-
