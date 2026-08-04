@@ -2,7 +2,9 @@
 // Supporte : TikTok, Instagram, Pinterest, Facebook, Twitter/X, Threads,
 // Videy, Mega, SoundCloud, Spotify, YouTube, Sfile, MediaFire
 import axios from 'axios'
+import fs from 'fs'
 import { card, error, loading } from '../utils/design.js'
+import { getPlayableAudio } from '../utils/ytdownload.js'
 import { pickBestMediaUrl } from '../utils/extractMediaUrl.js'
 
 const TT  = /(?<!\S)https?:\/\/(www\.)?(vm\.|vt\.|m\.)?tiktok\.com\/[^\s]+(?=\s|$)/i
@@ -300,8 +302,9 @@ export default async function dl(client, message) {
                 break
             }
             case 'yt': {
-                const r = await ytmp3(found.url)
-                await client.sendMessage(remoteJid, { audio: { url: r.url }, mimetype: 'audio/mpeg', fileName: `${r.title}.mp3` }, { quoted: message })
+                const { filePath, title } = await getPlayableAudio(found.url)
+                await client.sendMessage(remoteJid, { audio: { url: filePath }, mimetype: 'audio/mpeg', fileName: `${title || 'audio'}.mp3` }, { quoted: message })
+                fs.unlink(filePath, () => {})
                 break
             }
             case 'sf': {
@@ -318,4 +321,3 @@ export default async function dl(client, message) {
         await client.sendMessage(remoteJid, { text: error(e.message) }, { quoted: message })
     }
 }
-
