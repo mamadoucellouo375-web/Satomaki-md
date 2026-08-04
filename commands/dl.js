@@ -21,6 +21,19 @@ const SP  = /https?:\/\/open\.spotify\.com\/[^\s]+/i
 const YT  = /https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[^\s]+/i
 const SF  = /https?:\/\/sfile\.co\/[^\s]+/i
 
+// --- Détection des options (--link, --video, --audio) ---
+function parseOptions(text) {
+    return {
+        link: /--link\b|\s-l\b/i.test(text),
+        video: /--video\b|\s-v\b/i.test(text),
+        audio: /--audio\b|\s-a\b/i.test(text),
+    }
+}
+
+function stripOptions(text) {
+    return text.replace(/--link|--video|--audio|\s-[lva]\b/gi, '').trim()
+}
+
 function detect(txt) {
     if (!txt) return null
     const clean = (m) => m?.[0]?.replace(/[.,!?]$/, '')
@@ -180,6 +193,8 @@ export default async function dl(client, message) {
     ).trim()
     let raw = text.split(/\s+/).slice(1).join(' ').trim()
     if (!raw) raw = message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation || ''
+    const dlOptions = parseOptions(raw)
+    raw = stripOptions(raw)
 
     if (!raw) {
         return client.sendMessage(remoteJid, {
@@ -190,6 +205,7 @@ export default async function dl(client, message) {
                 'SoundCloud • Spotify • YouTube • Sfile • MediaFire',
                 '---',
                 'Usage : .dl <lien>',
+                'Options : --link (juste le lien) --video (forcer vidéo YouTube)',
                 'Astuce : répondre à un message contenant un lien marche aussi'
             ])
         }, { quoted: message })
@@ -198,6 +214,13 @@ export default async function dl(client, message) {
     const found = detect(raw)
     if (!found) {
         return client.sendMessage(remoteJid, { text: error('Lien invalide ou plateforme non supportée.') }, { quoted: message })
+    }
+
+    // --link : on n'essaie même pas de télécharger, on renvoie juste le lien source
+    if (dlOptions.link) {
+        return client.sendMessage(remoteJid, {
+            text: card('LIEN', [found.url])
+        }, { quoted: message })
     }
 
     await client.sendMessage(remoteJid, { text: loading('Téléchargement en cours') }, { quoted: message })
@@ -302,6 +325,12 @@ export default async function dl(client, message) {
                 break
             }
             case 'yt': {
+                if (dlOptions.video) {
+                    const { getDirectVideoUrl } = await import('../utils/ytdownload.js')
+                    const { url: videoUrl, title } = await getDirectVideoUrl(found.url)
+                    await client.sendMessage(remoteJid, { video: { url: videoUrl }, mimetype: 'video/mp4', caption: title || '' }, { quoted: message })
+                    break
+                }
                 const { filePath, title } = await getPlayableAudio(found.url)
                 await client.sendMessage(remoteJid, { audio: { url: filePath }, mimetype: 'audio/mpeg', fileName: `${title || 'audio'}.mp3` }, { quoted: message })
                 fs.unlink(filePath, () => {})
@@ -318,6 +347,13 @@ export default async function dl(client, message) {
             }
         }
     } catch (e) {
-        await client.sendMessage(remoteJid, { text: error(e.message) }, { quoted: message })
+        await client.sendMessage(remoteJid, {
+            text: card('ÉCHEC DU TÉLÉCHARGEMENT', [
+                e.message,
+                '---',
+                'Lien source (à ouvrir manuellement) :',
+                found.url
+            ])
+        }, { quoted: message })
     }
 }
