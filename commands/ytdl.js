@@ -1,7 +1,6 @@
-// ytdl.js - YouTube audio/vidéo (multi-API fallback)
+// ytdl.js - YouTube audio/vidéo (multi-API fallback, méthode directe)
 import ytSearch from 'yt-search'
-import fs from 'fs'
-import { downloadYoutube } from '../utils/ytdownload.js'
+import { getDirectAudioUrl, getDirectVideoUrl } from '../utils/ytdownload.js'
 import { card, loading, error } from '../utils/design.js'
 
 export const handleYtdlResponse = async (client, message, text) => {}
@@ -34,22 +33,22 @@ export default async function ytdlCommand(client, message) {
 
         await client.sendMessage(remoteJid, { text: loading(`Téléchargement ${type}`) }, { quoted: message })
 
-        const filePath = await downloadYoutube(url, type)
-
         if (type === 'video') {
+            const { url: videoUrl } = await getDirectVideoUrl(url)
             await client.sendMessage(remoteJid, {
-                video: { url: filePath },
-                caption: `🎬 *${title}*\n✠ *NOVA REAPER MD*`
+                video: { url: videoUrl },
+                mimetype: 'video/mp4',
+                caption: `🎬 *${title}*\n✠ *SATOMAKI-MD*`
             }, { quoted: message })
         } else {
+            const { url: audioUrl } = await getDirectAudioUrl(url)
             await client.sendMessage(remoteJid, {
-                audio: { url: filePath },
+                audio: { url: audioUrl },
                 mimetype: 'audio/mpeg',
                 ptt: false,
                 fileName: `${title}.mp3`
             }, { quoted: message })
         }
-        fs.unlink(filePath, () => {})
     } catch (e) {
         await client.sendMessage(remoteJid, { text: error(`Échec du téléchargement.\n${e.message}`) }, { quoted: message })
     }
