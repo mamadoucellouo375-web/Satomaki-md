@@ -1,5 +1,6 @@
 import ytSearch from 'yt-search'
-import { getDirectAudioUrl } from '../utils/ytdownload.js'
+import fs from 'fs'
+import { getPlayableAudio } from '../utils/ytdownload.js'
 import { card, loading, error } from '../utils/design.js'
 
 export default async function songCommand(client, message) {
@@ -35,16 +36,17 @@ export default async function songCommand(client, message) {
             ])
         }, { quoted: message })
 
-        // Méthode directe (comme .dl) : pas de téléchargement local, on donne
-        // juste le lien à WhatsApp qui streame lui-même.
-        const { url: audioUrl } = await getDirectAudioUrl(v.url)
+        // Téléchargement + conversion garantie en vrai MP3 (comme .dl mais fiable)
+        const { filePath } = await getPlayableAudio(v.url)
 
         await client.sendMessage(remoteJid, {
-            audio: { url: audioUrl },
+            audio: { url: filePath },
             mimetype: 'audio/mpeg',
             ptt: false,
             fileName: `${v.title.replace(/[^\w\s]/g, '').trim()}.mp3`
         }, { quoted: message })
+
+        fs.unlink(filePath, () => {})
 
     } catch (e) {
         console.error('Song error:', e.message)
