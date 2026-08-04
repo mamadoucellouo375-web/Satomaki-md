@@ -16,11 +16,7 @@ process.on('unhandledRejection', (reason) => {
 })
 
 import connectToWhatsapp from './Digix/crew.js'
-import handleIncomingMessage from './events/messageHandler.js'
-import { startTempCleaner } from './utils/tempCleaner.js'
-
-startTempCleaner()
-
+import handleIncomingMessage from './events/messageHandler.js 
 (async() => {
     await connectToWhatsapp(handleIncomingMessage)
         console.log('established !')
