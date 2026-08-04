@@ -159,6 +159,49 @@ const BROWSER_HEADERS = {
     'Accept': 'application/json, text/plain, */*'
 }
 
+// ─── Méthode simple : lien direct sans téléchargement local ──────
+// C'est la méthode utilisée par .dl (qui marche) : on ne télécharge rien
+// nous-mêmes, on donne juste l'URL à WhatsApp qui streame lui-même.
+// Beaucoup plus simple et plus fiable que le pipeline download+ffmpeg.
+export async function getDirectAudioUrl(url) {
+    const id = videoId(url)
+    const cleanUrl = id ? `https://www.youtube.com/watch?v=${id}` : url
+    const errors = []
+
+    try {
+        const res = await axios.get(`https://api.nexray.web.id/downloader/ytmp3?url=${encodeURIComponent(cleanUrl)}`, { timeout: 20000 })
+        const d = res.data
+        if (d?.status && d.result?.url) return { url: d.result.url, title: d.result.title }
+        errors.push(`Nexray: ${d?.message || 'pas de lien'}`)
+    } catch (e) { errors.push(`Nexray: ${e.message}`) }
+
+    try {
+        const res = await axios.get('https://api.ryzumi.net/api/downloader/ytmp3', {
+            params: { url: cleanUrl }, timeout: 20000, headers: BROWSER_HEADERS
+        })
+        const d = res.data
+        const link = d?.videoUrl || d?.url
+        if (link?.startsWith('http')) return { url: link, title: d?.title }
+        errors.push('Ryzumi: pas de lien')
+    } catch (e) { errors.push(`Ryzumi: ${e.message}`) }
+
+    // EliteProTech (nouveau, avec fallback local titre depuis videos search si absent)
+    try {
+        const res = await axios.get(`https://eliteprotech-apis.zone.id/ytdown?url=${encodeURIComponent(cleanUrl)}&format=mp3`, { timeout: 30000, headers: BROWSER_HEADERS })
+        if (res.data?.success && res.data?.downloadURL) return { url: res.data.downloadURL, title: res.data.title }
+        errors.push('EliteProTech: pas de lien')
+    } catch (e) { errors.push(`EliteProTech: ${e.message}`) }
+
+    // Yupra (nouveau)
+    try {
+        const res = await axios.get(`https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(cleanUrl)}`, { timeout: 30000, headers: BROWSER_HEADERS })
+        if (res.data?.success && res.data?.data?.download_url) return { url: res.data.data.download_url, title: res.data.data.title }
+        errors.push('Yupra: pas de lien')
+    } catch (e) { errors.push(`Yupra: ${e.message}`) }
+
+    throw new Error(`Tous les fournisseurs ont échoué:\n${errors.join('\n')}`)
+}
+
 async function viaRyzumi(url, type) {
     const endpoint = type === 'audio' ? 'ytmp3' : 'ytmp4'
     const res = await axios.get(`https://api.ryzumi.net/api/downloader/${endpoint}`, {
@@ -215,6 +258,36 @@ async function ensureRealMp3(filePath) {
     if (!validFile(converted)) throw new Error('ffmpeg: conversion invalide')
     try { fs.unlinkSync(filePath) } catch {}
     return converted
+}
+
+// ─── Méthode simple pour la vidéo : lien direct, 3 nouveaux fournisseurs ──
+export async function getDirectVideoUrl(url) {
+    const id = videoId(url)
+    const cleanUrlStr = id ? `https://www.youtube.com/watch?v=${id}` : url
+    const errors = []
+
+    // EliteProTech
+    try {
+        const res = await axios.get(`https://eliteprotech-apis.zone.id/ytdown?url=${encodeURIComponent(cleanUrlStr)}&format=mp4`, { timeout: 30000, headers: BROWSER_HEADERS })
+        if (res.data?.success && res.data?.downloadURL) return { url: res.data.downloadURL, title: res.data.title }
+        errors.push('EliteProTech: pas de lien')
+    } catch (e) { errors.push(`EliteProTech: ${e.message}`) }
+
+    // Yupra
+    try {
+        const res = await axios.get(`https://api.yupra.my.id/api/downloader/ytmp4?url=${encodeURIComponent(cleanUrlStr)}`, { timeout: 30000, headers: BROWSER_HEADERS })
+        if (res.data?.success && res.data?.data?.download_url) return { url: res.data.data.download_url, title: res.data.data.title }
+        errors.push('Yupra: pas de lien')
+    } catch (e) { errors.push(`Yupra: ${e.message}`) }
+
+    // Okatsu
+    try {
+        const res = await axios.get(`https://okatsu-rolezapiiz.vercel.app/downloader/ytmp4?url=${encodeURIComponent(cleanUrlStr)}`, { timeout: 30000, headers: BROWSER_HEADERS })
+        if (res.data?.result?.mp4) return { url: res.data.result.mp4, title: res.data.result.title }
+        errors.push('Okatsu: pas de lien')
+    } catch (e) { errors.push(`Okatsu: ${e.message}`) }
+
+    throw new Error(`Tous les fournisseurs vidéo ont échoué:\n${errors.join('\n')}`)
 }
 
 export async function downloadYoutube(url, type = 'audio') {
