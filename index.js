@@ -60,9 +60,7 @@ try {
 // à un import statique classique qui aurait planté si les deps manquaient.
 const { default: connectToWhatsapp } = await import('./Digix/crew.js')
 const { default: handleIncomingMessage } = await import('./events/messageHandler.js')
-const { default: tempCleaner } = await import('./utils/tempCleaner.js')
 
-tempCleaner.startTempCleaner()
 
 await connectToWhatsapp(handleIncomingMessage)
 console.log('established !')
