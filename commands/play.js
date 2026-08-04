@@ -1,6 +1,6 @@
 import ytSearch from 'yt-search'
 import fs from 'fs'
-import { downloadYoutube } from '../utils/ytdownload.js'
+import { getPlayableAudio } from '../utils/ytdownload.js'
 import { card, loading, error } from '../utils/design.js'
 
 export async function play(message, client) {
@@ -20,7 +20,7 @@ export async function play(message, client) {
             text: card('TROUVÉ', [`${v.title.substring(0,60)}`, `Durée : ${v.timestamp}`])
         }, { quoted: message })
 
-        const filePath = await downloadYoutube(v.url, 'audio')
+        const { filePath } = await getPlayableAudio(v.url)
         await client.sendMessage(remoteJid, {
             audio: { url: filePath }, mimetype: 'audio/mpeg', ptt: false,
             fileName: `${v.title.replace(/[^\w\s]/g,'').trim()}.mp3`
@@ -31,3 +31,4 @@ export async function play(message, client) {
     }
 }
 export default play
+
