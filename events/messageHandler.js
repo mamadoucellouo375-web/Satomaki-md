@@ -24,6 +24,7 @@ import dl from '../commands/dl.js'
 import poll from '../commands/poll.js'
 import lyrics from '../commands/lyrics.js'
 import animu from '../commands/animu.js'
+import audit from '../commands/audit.js'
 import { npmSearch, githubRepo, gitclone } from '../commands/devtools.js'
 import stickerdl from '../commands/stickerdl.js'
 import sender from '../commands/sender.js'
@@ -166,6 +167,7 @@ function buildCommandMap(client) {
         ['lyrics',      (c,m) => lyrics(c,m)],
         ['paroles',     (c,m) => lyrics(c,m)],
         ['animu',       (c,m) => animu(c,m)],
+        ['audit',       (c,m) => audit(c,m)],
         ['sondage',     (c,m) => poll(c,m)],
         ['npm',         (c,m) => npmSearch(c,m)],
         ['srepo',       (c,m) => githubRepo(c,m)],
@@ -494,3 +496,4 @@ async function handleIncomingMessage(client, event) {
 
 export { buildCommandMap }
 export default handleIncomingMessage
+
