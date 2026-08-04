@@ -3,6 +3,7 @@ import axios from 'axios'
 import fs from 'fs'
 import path from 'path'
 import { exec } from 'child_process'
+import ffmpegPath from 'ffmpeg-static'
 import { pickBestMediaUrl } from './extractMediaUrl.js'
 
 function videoId(url) {
@@ -287,6 +288,32 @@ export async function getDirectVideoUrl(url) {
     } catch (e) { errors.push(`Okatsu: ${e.message}`) }
 
     throw new Error(`Tous les fournisseurs vidéo ont échoué:\n${errors.join('\n')}`)
+}
+
+// ─── Audio garanti lisible : lien direct + téléchargement + conversion ────
+// getDirectAudioUrl() trouve vite un lien, mais certains fournisseurs renvoient
+// l'audio brut YouTube (.m4a/opus) juste renommé en .mp3 → WhatsApp refuse de
+// le lire (00:00, "souci avec le fichier audio"). On télécharge donc ce lien
+// puis on le fait passer par ffmpeg pour garantir un vrai MP3 avant l'envoi.
+export async function getPlayableAudio(url) {
+    const { url: remoteUrl, title } = await getDirectAudioUrl(url)
+
+    const rawPath = tmpPath('audio')
+    await saveStream(remoteUrl, rawPath)
+    if (!validFile(rawPath)) {
+        try { fs.unlinkSync(rawPath) } catch {}
+        throw new Error('Fichier téléchargé invalide')
+    }
+
+    try {
+        const converted = await ensureRealMp3(rawPath)
+        return { filePath: converted, title }
+    } catch (e) {
+        // Si ffmpeg échoue (indisponible), on renvoie quand même le fichier brut
+        // plutôt que de bloquer complètement — mieux que rien.
+        console.log('[YT] ffmpeg indisponible, envoi du fichier brut:', e.message)
+        return { filePath: rawPath, title }
+    }
 }
 
 export async function downloadYoutube(url, type = 'audio') {
