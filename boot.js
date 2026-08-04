@@ -22,15 +22,28 @@ if (needsInstall()) {
     console.log('📦 Dépendances manquantes détectées — installation automatique...')
     try {
         execSync('npm install --no-audit --no-fund', { stdio: 'inherit' })
-        console.log('✅ Installation terminée.')
     } catch (e) {
-        console.error('❌ Échec de npm install automatique:', e.message)
-        console.error('   Le bot va quand même essayer de démarrer avec ce qui est déjà installé.')
+        console.error('⚠️ Premier npm install incomplet (scripts probablement bloqués):', e.message)
     }
 } else {
     console.log('✅ Toutes les dépendances sont déjà présentes.')
 }
 
+// npm 11.16+ bloque par défaut les scripts d'installation (postinstall/install)
+// des dépendances tant qu'ils ne sont pas explicitement approuvés. Un paquet comme
+// ffmpeg-static peut donc exister comme dossier (needsInstall() le voit "présent")
+// alors que son binaire n'a jamais été téléchargé. On approuve + réinstalle à
+// CHAQUE démarrage (rapide et sans effet si déjà approuvé) pour ne jamais rater ce cas.
+try {
+    execSync('npm approve-scripts --all', { stdio: 'inherit' })
+    execSync('npm install --no-audit --no-fund', { stdio: 'inherit' })
+    console.log('✅ Scripts d\'installation approuvés et à jour.')
+} catch (e) {
+    console.error('❌ Échec de l\'approbation/réinstallation automatique:', e.message)
+    console.error('   Le bot va quand même essayer de démarrer avec ce qui est déjà installé.')
+}
+
 // Chargement du vrai bot APRÈS l'installation (import dynamique = exécuté
 // seulement maintenant, pas avant, contrairement à un import classique)
 await import('./index.js')
+
