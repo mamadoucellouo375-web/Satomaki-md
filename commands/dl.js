@@ -48,14 +48,49 @@ async function tt(url) {
     return d.data.images?.length ? { type: 'image', data: d.data.images } : { type: 'video', data: d.data.play }
 }
 async function ig(url) {
-    const { data: d } = await axios.get(`https://api-faa.my.id/faa/igdl?url=${encodeURIComponent(url)}`)
-    if (!d.status || !d.result?.url) throw new Error(d.message || 'Erreur API Instagram')
-    return { urls: d.result.url, isVideo: d.result.metadata?.isVideo }
+    const clean = url.split('?')[0].trim()
+    try {
+        const { data: d } = await axios.get(`https://api-faa.my.id/faa/igdl?url=${encodeURIComponent(url)}`)
+        if (d.status && d.result?.url) return { urls: d.result.url, isVideo: d.result.metadata?.isVideo }
+    } catch {}
+    // Fallback 1 : drexapp (supporte aussi les carousels)
+    try {
+        const { data: d } = await axios.get(`https://api.drexapp.space/downloader/igdlv2?url=${encodeURIComponent(clean)}`, { timeout: 20000 })
+        if (d?.status && d.result) {
+            const r = d.result
+            if (r.video) return { urls: [r.video], isVideo: true }
+            if (r.image) return { urls: [r.image], isVideo: false }
+            if (r.items?.length) return { urls: r.items.map(i => i.video || i.image), isVideo: !!r.items[0].video }
+        }
+    } catch {}
+    // Fallback 2 : saveig.app
+    try {
+        const { data } = await axios.get(`https://v3.saveig.app/api/ajaxSearch?q=${encodeURIComponent(clean)}&t=media&lang=fr`, {
+            headers: { 'User-Agent': 'Mozilla/5.0', 'X-Requested-With': 'XMLHttpRequest' }, timeout: 15000
+        })
+        const html = data?.data || ''
+        const vid = html.match(/href="(https:\/\/[^"]+\.mp4[^"]*)"/)
+        if (vid) return { urls: [vid[1]], isVideo: true }
+        const img = html.match(/href="(https:\/\/[^"]+\.(jpg|jpeg|png)[^"]*)"/)
+        if (img) return { urls: [img[1]], isVideo: false }
+    } catch {}
+    throw new Error('Erreur API Instagram (tous les fournisseurs ont échoué)')
 }
 async function pin(url) {
-    const { data: d } = await axios.get(`https://api-faa.my.id/faa/pin-down?url=${encodeURIComponent(url)}`)
-    if (!d.status || !d.result?.medias) throw new Error(d.message || 'Erreur API Pinterest')
-    return d.result.medias
+    try {
+        const { data: d } = await axios.get(`https://api-faa.my.id/faa/pin-down?url=${encodeURIComponent(url)}`)
+        if (d.status && d.result?.medias) return d.result.medias
+    } catch {}
+    // Fallback : Pinterest oEmbed (officiel, sans clé)
+    try {
+        const { data } = await axios.get(`https://www.pinterest.com/oembed.json?url=${encodeURIComponent(url)}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000
+        })
+        const m = data.html?.match(/src="(https:\/\/i\.pinimg\.com[^"]+)"/)
+        const imgUrl = m?.[1] || data.thumbnail_url
+        if (imgUrl) return [{ type: 'image', url: imgUrl }]
+    } catch {}
+    throw new Error('Erreur API Pinterest (tous les fournisseurs ont échoué)')
 }
 async function fb(url) {
     try {
@@ -73,6 +108,15 @@ async function fb(url) {
     } catch {}
     const fallback = pickBestMediaUrl(d2)
     if (fallback) return { video_hd: fallback }
+    // Fallback 3 : tele-social.vercel.app
+    try {
+        const { data: d3 } = await axios.get(`https://tele-social.vercel.app/down?url=${encodeURIComponent(url)}`, { timeout: 20000 })
+        if (d3?.status === true && d3.data) {
+            const media = d3.data.media || {}
+            const link = media.download || media.video
+            if (link) return { video_hd: link }
+        }
+    } catch {}
     throw new Error('Erreur API Facebook (tous les fournisseurs ont échoué)')
 }
 async function tw(url) {
@@ -274,3 +318,4 @@ export default async function dl(client, message) {
         await client.sendMessage(remoteJid, { text: error(e.message) }, { quoted: message })
     }
 }
+
