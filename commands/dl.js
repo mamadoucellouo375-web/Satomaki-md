@@ -7,6 +7,10 @@ import { card, error, loading } from '../utils/design.js'
 import { getPlayableAudio } from '../utils/ytdownload.js'
 import { pickBestMediaUrl } from '../utils/extractMediaUrl.js'
 
+// --- Timeout par défaut pour toutes les requêtes ---
+const TIMEOUT = 15000
+
+// --- Expressions régulières ---
 const TT  = /(?<!\S)https?:\/\/(www\.)?(vm\.|vt\.|m\.)?tiktok\.com\/[^\s]+(?=\s|$)/i
 const IG  = /https?:\/\/(www\.)?instagram\.com\/[^\s]+/i
 const MF  = /(?<!\S)https?:\/\/(www\.)?mediafire\.com\/\S+(?=\s|$)/i
@@ -57,16 +61,22 @@ function detect(txt) {
     return null
 }
 
+// ---------- Fonctions de téléchargement par plateforme ----------
+
 async function tt(url) {
-    const { data: d } = await axios.get(`https://tikwm.com/api/?url=${encodeURIComponent(url)}`)
+    const { data: d } = await axios.get(`https://tikwm.com/api/?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
     if (d.code !== 0 || !d.data) throw new Error(d.msg || 'Erreur API TikTok')
     return d.data.images?.length ? { type: 'image', data: d.data.images } : { type: 'video', data: d.data.play }
 }
+
 async function ig(url) {
     const clean = url.split('?')[0].trim()
     try {
-        const { data: d } = await axios.get(`https://api-faa.my.id/faa/igdl?url=${encodeURIComponent(url)}`)
-        if (d.status && d.result?.url) return { urls: d.result.url, isVideo: d.result.metadata?.isVideo }
+        const { data: d } = await axios.get(`https://api-faa.my.id/faa/igdl?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
+        if (d.status && d.result?.url) {
+            const urls = Array.isArray(d.result.url) ? d.result.url : [d.result.url]
+            return { urls, isVideo: d.result.metadata?.isVideo }
+        }
     } catch {}
     // Fallback 1 : drexapp (supporte aussi les carousels)
     try {
@@ -75,13 +85,17 @@ async function ig(url) {
             const r = d.result
             if (r.video) return { urls: [r.video], isVideo: true }
             if (r.image) return { urls: [r.image], isVideo: false }
-            if (r.items?.length) return { urls: r.items.map(i => i.video || i.image), isVideo: !!r.items[0].video }
+            if (r.items?.length) {
+                const urls = r.items.map(i => i.video || i.image)
+                return { urls, isVideo: !!r.items[0].video }
+            }
         }
     } catch {}
     // Fallback 2 : saveig.app
     try {
         const { data } = await axios.get(`https://v3.saveig.app/api/ajaxSearch?q=${encodeURIComponent(clean)}&t=media&lang=fr`, {
-            headers: { 'User-Agent': 'Mozilla/5.0', 'X-Requested-With': 'XMLHttpRequest' }, timeout: 15000
+            headers: { 'User-Agent': 'Mozilla/5.0', 'X-Requested-With': 'XMLHttpRequest' },
+            timeout: TIMEOUT
         })
         const html = data?.data || ''
         const vid = html.match(/href="(https:\/\/[^"]+\.mp4[^"]*)"/)
@@ -91,15 +105,23 @@ async function ig(url) {
     } catch {}
     throw new Error('Erreur API Instagram (tous les fournisseurs ont échoué)')
 }
+
 async function pin(url) {
     try {
-        const { data: d } = await axios.get(`https://api-faa.my.id/faa/pin-down?url=${encodeURIComponent(url)}`)
-        if (d.status && d.result?.medias) return d.result.medias
+        const { data: d } = await axios.get(`https://api-faa.my.id/faa/pin-down?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
+        if (d.status && d.result?.medias) {
+            // Normalisation : toujours un tableau d'objets { type, url }
+            return d.result.medias.map(item => ({
+                type: item.type === 'video' ? 'video' : 'image',
+                url: item.url || item.link
+            }))
+        }
     } catch {}
     // Fallback : Pinterest oEmbed (officiel, sans clé)
     try {
         const { data } = await axios.get(`https://www.pinterest.com/oembed.json?url=${encodeURIComponent(url)}`, {
-            headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            timeout: TIMEOUT
         })
         const m = data.html?.match(/src="(https:\/\/i\.pinimg\.com[^"]+)"/)
         const imgUrl = m?.[1] || data.thumbnail_url
@@ -107,22 +129,22 @@ async function pin(url) {
     } catch {}
     throw new Error('Erreur API Pinterest (tous les fournisseurs ont échoué)')
 }
+
 async function fb(url) {
     try {
-        const { data: d } = await axios.get(`https://api-faa.my.id/faa/fbdownload?url=${encodeURIComponent(url)}`)
+        const { data: d } = await axios.get(`https://api-faa.my.id/faa/fbdownload?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
         if (d.status && d.result?.media) return d.result.media
     } catch {}
-    // Fallback : Ryzumi API (schéma result.media.videos[]/images[])
-    let d2
+    // Fallback : Ryzumi API
     try {
-        d2 = (await axios.get(`https://api.ryzumi.net/api/downloader/facebook?url=${encodeURIComponent(url)}`)).data
+        const { data: d2 } = await axios.get(`https://api.ryzumi.net/api/downloader/facebook?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
         const vids = d2?.result?.media?.videos
         const imgs = d2?.result?.media?.images
         if (vids?.length) return { video_hd: vids[0].url }
         if (imgs?.length) return { photo_image: imgs[0].url }
+        const fallback = pickBestMediaUrl(d2)
+        if (fallback) return { video_hd: fallback }
     } catch {}
-    const fallback = pickBestMediaUrl(d2)
-    if (fallback) return { video_hd: fallback }
     // Fallback 3 : tele-social.vercel.app
     try {
         const { data: d3 } = await axios.get(`https://tele-social.vercel.app/down?url=${encodeURIComponent(url)}`, { timeout: 20000 })
@@ -134,57 +156,61 @@ async function fb(url) {
     } catch {}
     throw new Error('Erreur API Facebook (tous les fournisseurs ont échoué)')
 }
+
 async function tw(url) {
-    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/twitter?url=${encodeURIComponent(url)}`)
+    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/twitter?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
     if (!d.status || !d.result) throw new Error(d.message || 'Erreur API Twitter/X')
     return { type: d.result.type, data: d.result.download_url }
 }
+
 async function vd(url) {
-    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/videy?url=${encodeURIComponent(url)}`)
+    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/videy?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
     if (!d.status || !d.result) throw new Error(d.message || 'Erreur API Videy')
     return d.result
 }
+
 async function mf(url) {
     try {
-        const { data: d } = await axios.get(`https://api-faa.my.id/faa/mediafire?url=${encodeURIComponent(url)}`)
+        const { data: d } = await axios.get(`https://api-faa.my.id/faa/mediafire?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
         if (d.status && d.result) return d.result
     } catch {}
-    // Fallback : Ryzumi API (schéma différent : data.filename/filesize/downloadUrl)
-    const { data: d2 } = await axios.get(`https://api.ryzumi.net/api/downloader/mediafire?url=${encodeURIComponent(url)}`)
+    // Fallback : Ryzumi API
+    const { data: d2 } = await axios.get(`https://api.ryzumi.net/api/downloader/mediafire?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
     if (!d2?.status || !d2.data?.downloadUrl) throw new Error(d2?.error || d2?.message || 'Erreur API MediaFire')
     return { download_url: d2.data.downloadUrl, filename: d2.data.filename, size: d2.data.filesize }
 }
+
 async function th(url) {
-    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/threads?url=${encodeURIComponent(url)}`)
+    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/threads?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
     if (!d.status || !d.result?.media) throw new Error(d.message || 'Erreur API Threads')
     return d.result.media
 }
+
 async function mg(url) {
-    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/mega?url=${encodeURIComponent(url)}`)
+    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/mega?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
     if (!d.status || !d.result) throw new Error(d.message || 'Erreur API Mega')
     return d.result
 }
+
 async function sc(url) {
-    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/soundcloud?url=${encodeURIComponent(url)}`)
+    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/soundcloud?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
     if (!d.status || !d.result?.url) throw new Error(d.message || 'Erreur API SoundCloud')
     return d.result
 }
+
 async function sp(url) {
-    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/spotify?url=${encodeURIComponent(url)}`)
+    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/spotify?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
     if (!d.status || !d.result?.url) throw new Error(d.message || 'Erreur API Spotify')
     return d.result
 }
-async function ytmp3(url) {
-    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/ytmp3?url=${encodeURIComponent(url)}`)
-    if (!d.status || !d.result?.url) throw new Error(d.message || 'Erreur API YouTube')
-    return d.result
-}
+
 async function sf(url) {
-    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/sfile?url=${encodeURIComponent(url)}`)
+    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/sfile?url=${encodeURIComponent(url)}`, { timeout: TIMEOUT })
     if (!d.status || !d.result?.url) throw new Error(d.message || 'Erreur API Sfile')
     return d.result
 }
 
+// ---------- Fonction principale ----------
 export default async function dl(client, message) {
     const remoteJid = message.key.remoteJid
     const text = (
@@ -216,7 +242,7 @@ export default async function dl(client, message) {
         return client.sendMessage(remoteJid, { text: error('Lien invalide ou plateforme non supportée.') }, { quoted: message })
     }
 
-    // --link : on n'essaie même pas de télécharger, on renvoie juste le lien source
+    // --link : on renvoie juste le lien source
     if (dlOptions.link) {
         return client.sendMessage(remoteJid, {
             text: card('LIEN', [found.url])
@@ -326,14 +352,23 @@ export default async function dl(client, message) {
             }
             case 'yt': {
                 if (dlOptions.video) {
+                    // Import dynamique pour ne pas alourdir
                     const { getDirectVideoUrl } = await import('../utils/ytdownload.js')
                     const { url: videoUrl, title } = await getDirectVideoUrl(found.url)
                     await client.sendMessage(remoteJid, { video: { url: videoUrl }, mimetype: 'video/mp4', caption: title || '' }, { quoted: message })
                     break
                 }
-                const { filePath, title, isRemoteUrl } = await getPlayableAudio(found.url)
-                await client.sendMessage(remoteJid, { audio: { url: filePath }, mimetype: 'audio/mpeg', fileName: `${title || 'audio'}.mp3` }, { quoted: message })
-                if (!isRemoteUrl) fs.unlink(filePath, () => {})
+                // Par défaut : audio (comportement original)
+                try {
+                    const { filePath, title, isRemoteUrl } = await getPlayableAudio(found.url)
+                    await client.sendMessage(remoteJid, { audio: { url: filePath }, mimetype: 'audio/mpeg', fileName: `${title || 'audio'}.mp3` }, { quoted: message })
+                    if (!isRemoteUrl) fs.unlink(filePath, () => {})
+                } catch (err) {
+                    // Si getPlayableAudio échoue, on essaye l'API youtube de fallback
+                    const { data: d } = await axios.get(`https://api.nexray.web.id/downloader/ytmp3?url=${encodeURIComponent(found.url)}`, { timeout: TIMEOUT })
+                    if (!d.status || !d.result?.url) throw new Error('Impossible de récupérer l\'audio YouTube')
+                    await client.sendMessage(remoteJid, { audio: { url: d.result.url }, mimetype: 'audio/mpeg', fileName: `${d.result.title || 'audio'}.mp3` }, { quoted: message })
+                }
                 break
             }
             case 'sf': {
@@ -345,6 +380,8 @@ export default async function dl(client, message) {
                 }, { quoted: message })
                 break
             }
+            default:
+                throw new Error('Type non pris en charge')
         }
     } catch (e) {
         await client.sendMessage(remoteJid, {
@@ -356,4 +393,4 @@ export default async function dl(client, message) {
             ])
         }, { quoted: message })
     }
-}
+        }
