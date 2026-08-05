@@ -331,9 +331,9 @@ export default async function dl(client, message) {
                     await client.sendMessage(remoteJid, { video: { url: videoUrl }, mimetype: 'video/mp4', caption: title || '' }, { quoted: message })
                     break
                 }
-                const { filePath, title } = await getPlayableAudio(found.url)
+                const { filePath, title, isRemoteUrl } = await getPlayableAudio(found.url)
                 await client.sendMessage(remoteJid, { audio: { url: filePath }, mimetype: 'audio/mpeg', fileName: `${title || 'audio'}.mp3` }, { quoted: message })
-                fs.unlink(filePath, () => {})
+                if (!isRemoteUrl) fs.unlink(filePath, () => {})
                 break
             }
             case 'sf': {
