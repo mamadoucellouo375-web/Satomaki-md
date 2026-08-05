@@ -295,7 +295,74 @@ export async function getDirectVideoUrl(url) {
 // l'audio brut YouTube (.m4a/opus) juste renommé en .mp3 → WhatsApp refuse de
 // le lire (00:00, "souci avec le fichier audio"). On télécharge donc ce lien
 // puis on le fait passer par ffmpeg pour garantir un vrai MP3 avant l'envoi.
+// ─── RapidAPI youtube-mp36 (service payant/freemium officiel de conversion) ──
+// Contrairement aux scrapers gratuits, celui-ci convertit vraiment côté
+// serveur et renvoie un vrai MP3 — donc pas besoin de ffmpeg derrière.
+const RAPIDAPI_KEYS = [
+    '25222978fdvjklmshe6b4366767fb8e6p18086bjsnee54a88ff976',
+    '5b1f7e8168msh62ce2d53951cc9ap1678a4jsn7af1076e73c6'
+]
+const RAPIDAPI_HOST = 'youtube-mp36.p.rapidapi.com'
+const RAPIDAPI_COUNTER_FILE = 'database/rapidapi_counter.json'
+
+function getRapidApiKeyIndex() {
+    try {
+        if (fs.existsSync(RAPIDAPI_COUNTER_FILE)) {
+            return JSON.parse(fs.readFileSync(RAPIDAPI_COUNTER_FILE, 'utf-8')).index || 0
+        }
+    } catch {}
+    return 0
+}
+function saveRapidApiKeyIndex(index) {
+    try {
+        if (!fs.existsSync('database')) fs.mkdirSync('database', { recursive: true })
+        fs.writeFileSync(RAPIDAPI_COUNTER_FILE, JSON.stringify({ index }))
+    } catch {}
+}
+
+async function viaRapidApi(url, attempt = 0) {
+    if (attempt >= RAPIDAPI_KEYS.length) throw new Error('RapidAPI: toutes les clés ont échoué (quota épuisé ?)')
+
+    const id = videoId(url)
+    if (!id) throw new Error('RapidAPI: ID vidéo introuvable')
+
+    const keyIndex = getRapidApiKeyIndex() % RAPIDAPI_KEYS.length
+    const apiKey = RAPIDAPI_KEYS[keyIndex]
+
+    try {
+        const res = await axios.get('https://youtube-mp36.p.rapidapi.com/dl', {
+            params: { id },
+            headers: { 'x-rapidapi-key': apiKey, 'x-rapidapi-host': RAPIDAPI_HOST },
+            timeout: 30000
+        })
+        const data = res.data
+
+        if (data?.status === 'processing') {
+            await new Promise(r => setTimeout(r, 3000))
+            return viaRapidApi(url, attempt) // même clé, on repolle
+        }
+        if (data?.status !== 'ok' || !data?.link) throw new Error(data?.msg || 'Statut inattendu')
+
+        saveRapidApiKeyIndex(keyIndex + 1) // clé suivante au prochain appel (répartir la charge)
+        return { url: data.link, title: data.title }
+    } catch (e) {
+        console.log(`[RapidAPI] Clé ${keyIndex + 1}/${RAPIDAPI_KEYS.length} échouée:`, e.message)
+        saveRapidApiKeyIndex(keyIndex + 1)
+        return viaRapidApi(url, attempt + 1) // clé suivante
+    }
+}
+
 export async function getPlayableAudio(url) {
+    // 1. RapidAPI en premier : service payant/freemium officiel, renvoie un
+    // vrai MP3 direct, pas besoin de téléchargement local ni de conversion.
+    try {
+        const { url: mp3Url, title } = await viaRapidApi(url)
+        return { filePath: mp3Url, title, isRemoteUrl: true }
+    } catch (e) {
+        console.log('[YT] RapidAPI indisponible, repli sur les fournisseurs gratuits:', e.message)
+    }
+
+    // 2. Repli : fournisseurs gratuits + téléchargement local + ffmpeg
     const { url: remoteUrl, title } = await getDirectAudioUrl(url)
 
     const rawPath = tmpPath('audio')
