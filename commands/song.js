@@ -36,8 +36,7 @@ export default async function songCommand(client, message) {
             ])
         }, { quoted: message })
 
-        // Téléchargement + conversion garantie en vrai MP3 (comme .dl mais fiable)
-        const { filePath } = await getPlayableAudio(v.url)
+        const { filePath, isRemoteUrl } = await getPlayableAudio(v.url)
 
         await client.sendMessage(remoteJid, {
             audio: { url: filePath },
@@ -46,7 +45,7 @@ export default async function songCommand(client, message) {
             fileName: `${v.title.replace(/[^\w\s]/g, '').trim()}.mp3`
         }, { quoted: message })
 
-        fs.unlink(filePath, () => {})
+        if (!isRemoteUrl) fs.unlink(filePath, () => {})
 
     } catch (e) {
         console.error('Song error:', e.message)
