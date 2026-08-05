@@ -20,12 +20,12 @@ export async function play(message, client) {
             text: card('TROUVÉ', [`${v.title.substring(0,60)}`, `Durée : ${v.timestamp}`])
         }, { quoted: message })
 
-        const { filePath } = await getPlayableAudio(v.url)
+        const { filePath, isRemoteUrl } = await getPlayableAudio(v.url)
         await client.sendMessage(remoteJid, {
             audio: { url: filePath }, mimetype: 'audio/mpeg', ptt: false,
             fileName: `${v.title.replace(/[^\w\s]/g,'').trim()}.mp3`
         }, { quoted: message })
-        fs.unlink(filePath, () => {})
+        if (!isRemoteUrl) fs.unlink(filePath, () => {})
     } catch (e) {
         await client.sendMessage(remoteJid, { text: error(e.message) }, { quoted: message })
     }
