@@ -26,7 +26,9 @@ async function saveStream(remoteUrl, dest) {
         res.data.pipe(w)
         w.on('finish', ok); w.on('error', fail); res.data.on('error', fail)
     })
+}
 
+function validFile(dest) {
 
 function validFile(dest) {
     try {
