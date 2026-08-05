@@ -18,17 +18,29 @@ function tmpPath(type) {
 
 async function saveStream(remoteUrl, dest) {
     const res = await axios.get(remoteUrl, {
-        responseType: 'stream', timeout: 90000,
+        responseType: 'stream',
+        timeout: 90000,
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
     })
     await new Promise((ok, fail) => {
         const w = fs.createWriteStream(dest)
         res.data.pipe(w)
-        w.on('finish', ok); w.on('error', fail); res.data.on('error', fail)
+        w.on('finish', ok)
+        w.on('error', fail)
+        res.data.on('error', fail)
+        // En cas de timeout, on nettoie
+        const timer = setTimeout(() => {
+            res.data.destroy()
+            w.destroy()
+            fail(new Error('Timeout du stream'))
+        }, 90000)
+        // Si la promesse est résolue ou rejetée, on annule le timer
+        const cleanup = () => clearTimeout(timer)
+        w.on('finish', cleanup)
+        w.on('error', cleanup)
+        res.data.on('error', cleanup)
     })
 }
-
-function validFile(dest) {
 
 function validFile(dest) {
     try {
@@ -36,7 +48,6 @@ function validFile(dest) {
         if (stat.size <= 5000) return false
 
         // Vérifier que ce n'est pas une page d'erreur JSON/HTML sauvegardée par erreur
-        // (les APIs gratuites renvoient parfois une erreur au lieu du vrai fichier)
         const fd = fs.openSync(dest, 'r')
         const buf = Buffer.alloc(32)
         const bytesRead = fs.readSync(fd, buf, 0, 32, 0)
@@ -66,11 +77,9 @@ async function viaYtdlp(url, type) {
     })
 }
 
-// ─── 2. Cobalt API (nouvelle API v10 — l'ancien /api/json est mort depuis nov. 2024) ──
+// ─── 2. Cobalt API ──────────────────────────────────────────────
 async function viaCobalt(url, type) {
-    const endpoints = [
-        'https://sunny.imput.net/',
-    ]
+    const endpoints = ['https://sunny.imput.net/']
     const detail = []
     for (const ep of endpoints) {
         try {
@@ -101,12 +110,7 @@ async function viaCobalt(url, type) {
     throw new Error(`Cobalt: aucun endpoint disponible (${detail.join(' | ')})`)
 }
 
-// SaveTube (media.savetube.me) et YtMp3 (yt-download.org) sont morts :
-// DNS injoignable / TLS cassé. Retirés en attendant un remplaçant fiable.
-// y2down.cc a aussi changé d'architecture, l'ancien endpoint /api/json renvoie 404 :
-// retiré en attendant de retrouver le bon format d'API.
-
-// ─── Loader.to (API asynchrone : on initie puis on interroge progress_url) ──
+// ─── 3. Loader.to ────────────────────────────────────────────────
 async function viaLoaderTo(url, type) {
     const id = videoId(url)
     if (!id) throw new Error('ID introuvable')
@@ -117,12 +121,10 @@ async function viaLoaderTo(url, type) {
         { timeout: 25000, headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://loader.to/' } }
     )
 
-    // Cas rare : lien direct dès la première réponse
     let link = initRes.data?.download_url || initRes.data?.url
     const progressUrl = initRes.data?.progress_url
 
     if (!link && progressUrl) {
-        // Polling : on interroge progress_url jusqu'à ce que le fichier soit prêt (max ~40s)
         for (let i = 0; i < 20; i++) {
             await new Promise(r => setTimeout(r, 2000))
             try {
@@ -134,14 +136,11 @@ async function viaLoaderTo(url, type) {
                     link = data?.download_url || data?.url || pickBestMediaUrl(data)
                     if (link) break
                 }
-            } catch { /* on continue de poller */ }
+            } catch { /* continue polling */ }
         }
     }
 
-    // Filet de sécurité : si les champs habituels ont changé de nom, on cherche
-    // n'importe quelle URL exploitable dans la réponse brute avant d'abandonner.
     if (!link) link = pickBestMediaUrl(initRes.data)
-
     if (!link?.startsWith('http')) {
         console.error('Loader.to reponse finale:', JSON.stringify(initRes.data).slice(0, 300))
         throw new Error('Loader.to: fichier jamais prêt (timeout de polling)')
@@ -152,19 +151,64 @@ async function viaLoaderTo(url, type) {
     return dest
 }
 
-
-// ─── Fonction principale : tous les fournisseurs en parallèle ─────
-// (au lieu d'attendre chaque échec l'un après l'autre, on les lance
-// tous en même temps et on prend le premier qui répond)
-const BROWSER_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-    'Accept': 'application/json, text/plain, */*'
+// ─── 4. Ryzumi (audio et vidéo) ────────────────────────────────
+async function viaRyzumi(url, type) {
+    const endpoint = type === 'audio' ? 'ytmp3' : 'ytmp4'
+    const res = await axios.get(`https://api.ryzumi.net/api/downloader/${endpoint}`, {
+        params: { url }, timeout: 30000,
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+    })
+    const d = res.data
+    const link = d?.videoUrl || d?.url
+    if (!link?.startsWith('http')) throw new Error('Ryzumi: pas de lien')
+    const dest = tmpPath(type)
+    await saveStream(link, dest)
+    if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('Ryzumi: fichier invalide') }
+    return dest
 }
 
-// ─── Méthode simple : lien direct sans téléchargement local ──────
-// C'est la méthode utilisée par .dl (qui marche) : on ne télécharge rien
-// nous-mêmes, on donne juste l'URL à WhatsApp qui streame lui-même.
-// Beaucoup plus simple et plus fiable que le pipeline download+ffmpeg.
+// ─── 5. Ryzumi V2 (vidéo uniquement, qualité 480p) ─────────────
+async function viaRyzumiV2(url) {
+    const res = await axios.get(`https://api.ryzumi.net/api/downloader/v2/ytmp4`, {
+        params: { url, quality: '480' }, timeout: 30000,
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+    })
+    const d = res.data
+    const link = d?.videoUrl || d?.url
+    if (!link?.startsWith('http')) throw new Error('Ryzumi V2: pas de lien')
+    const dest = tmpPath('video')
+    await saveStream(link, dest)
+    if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('Ryzumi V2: fichier invalide') }
+    return dest
+}
+
+// ─── 6. Nexray (audio uniquement) ──────────────────────────────
+async function viaNexray(url) {
+    const res = await axios.get(`https://api.nexray.web.id/downloader/ytmp3?url=${encodeURIComponent(url)}`, { timeout: 20000 })
+    const d = res.data
+    if (!d?.status || !d.result?.url) throw new Error(d?.message || 'Nexray: pas de lien')
+    const dest = tmpPath('audio')
+    await saveStream(d.result.url, dest)
+    if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('Nexray: fichier invalide') }
+    return dest
+}
+
+// ─── Fonction de conversion MP3 avec ffmpeg ─────────────────────
+async function ensureRealMp3(filePath) {
+    const converted = filePath.replace(/\.mp3$/, '_conv.mp3')
+    const bin = ffmpegPath || 'ffmpeg'
+    await new Promise((resolve, reject) => {
+        exec(`"${bin}" -y -i "${filePath}" -vn -acodec libmp3lame -ab 128k -ar 44100 "${converted}"`,
+            { timeout: 60000 },
+            (err) => err ? reject(err) : resolve()
+        )
+    })
+    if (!validFile(converted)) throw new Error('ffmpeg: conversion invalide')
+    try { fs.unlinkSync(filePath) } catch {}
+    return converted
+}
+
+// ─── Méthodes directes (liens distants, sans téléchargement local) ─────
 export async function getDirectAudioUrl(url) {
     const id = videoId(url)
     const cleanUrl = id ? `https://www.youtube.com/watch?v=${id}` : url
@@ -179,7 +223,8 @@ export async function getDirectAudioUrl(url) {
 
     try {
         const res = await axios.get('https://api.ryzumi.net/api/downloader/ytmp3', {
-            params: { url: cleanUrl }, timeout: 20000, headers: BROWSER_HEADERS
+            params: { url: cleanUrl }, timeout: 20000,
+            headers: { 'User-Agent': 'Mozilla/5.0' }
         })
         const d = res.data
         const link = d?.videoUrl || d?.url
@@ -187,16 +232,14 @@ export async function getDirectAudioUrl(url) {
         errors.push('Ryzumi: pas de lien')
     } catch (e) { errors.push(`Ryzumi: ${e.message}`) }
 
-    // EliteProTech (nouveau, avec fallback local titre depuis videos search si absent)
     try {
-        const res = await axios.get(`https://eliteprotech-apis.zone.id/ytdown?url=${encodeURIComponent(cleanUrl)}&format=mp3`, { timeout: 30000, headers: BROWSER_HEADERS })
+        const res = await axios.get(`https://eliteprotech-apis.zone.id/ytdown?url=${encodeURIComponent(cleanUrl)}&format=mp3`, { timeout: 30000 })
         if (res.data?.success && res.data?.downloadURL) return { url: res.data.downloadURL, title: res.data.title }
         errors.push('EliteProTech: pas de lien')
     } catch (e) { errors.push(`EliteProTech: ${e.message}`) }
 
-    // Yupra (nouveau)
     try {
-        const res = await axios.get(`https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(cleanUrl)}`, { timeout: 30000, headers: BROWSER_HEADERS })
+        const res = await axios.get(`https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(cleanUrl)}`, { timeout: 30000 })
         if (res.data?.success && res.data?.data?.download_url) return { url: res.data.data.download_url, title: res.data.data.title }
         errors.push('Yupra: pas de lien')
     } catch (e) { errors.push(`Yupra: ${e.message}`) }
@@ -204,87 +247,25 @@ export async function getDirectAudioUrl(url) {
     throw new Error(`Tous les fournisseurs ont échoué:\n${errors.join('\n')}`)
 }
 
-async function viaRyzumi(url, type) {
-    const endpoint = type === 'audio' ? 'ytmp3' : 'ytmp4'
-    const res = await axios.get(`https://api.ryzumi.net/api/downloader/${endpoint}`, {
-        params: { url }, timeout: 30000, headers: BROWSER_HEADERS
-    })
-    const d = res.data
-    const link = d?.videoUrl || d?.url
-    if (!link?.startsWith('http')) throw new Error('Ryzumi: pas de lien')
-    const dest = tmpPath(type)
-    await saveStream(link, dest)
-    if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('Ryzumi: fichier invalide') }
-    return dest
-}
-
-// Ryzumi V2 : endpoint alternatif pour la vidéo (plus de redondance, la vidéo
-// étant le format le moins bien couvert par les autres fournisseurs)
-async function viaRyzumiV2(url, type) {
-    if (type !== 'video') throw new Error('Ryzumi V2: vidéo uniquement')
-    const res = await axios.get(`https://api.ryzumi.net/api/downloader/v2/ytmp4`, {
-        params: { url, quality: '480' }, timeout: 30000, headers: BROWSER_HEADERS
-    })
-    const d = res.data
-    const link = d?.videoUrl || d?.url
-    if (!link?.startsWith('http')) throw new Error('Ryzumi V2: pas de lien')
-    const dest = tmpPath(type)
-    await saveStream(link, dest)
-    if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('Ryzumi V2: fichier invalide') }
-    return dest
-}
-
-async function viaNexray(url, type) {
-    if (type !== 'audio') throw new Error('Nexray: audio uniquement')
-    const res = await axios.get(`https://api.nexray.web.id/downloader/ytmp3?url=${encodeURIComponent(url)}`, { timeout: 20000 })
-    const d = res.data
-    if (!d?.status || !d.result?.url) throw new Error(d?.message || 'Nexray: pas de lien')
-    const dest = tmpPath(type)
-    await saveStream(d.result.url, dest)
-    if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('Nexray: fichier invalide') }
-    return dest
-}
-
-// Reconvertit en vrai MP3 avec ffmpeg : certains fournisseurs renvoient le flux
-// audio brut de YouTube (.m4a/opus) qu'on ne fait que renommer en .mp3 — WhatsApp
-// refuse de lire ces faux MP3 (00:00, "souci avec le fichier audio").
-async function ensureRealMp3(filePath) {
-    const converted = filePath.replace(/\.mp3$/, '_conv.mp3')
-    const bin = ffmpegPath || 'ffmpeg' // fallback sur le binaire système si ffmpeg-static échoue à se télécharger
-    await new Promise((resolve, reject) => {
-        exec(`"${bin}" -y -i "${filePath}" -vn -acodec libmp3lame -ab 128k -ar 44100 "${converted}"`,
-            { timeout: 60000 },
-            (err) => err ? reject(err) : resolve()
-        )
-    })
-    if (!validFile(converted)) throw new Error('ffmpeg: conversion invalide')
-    try { fs.unlinkSync(filePath) } catch {}
-    return converted
-}
-
-// ─── Méthode simple pour la vidéo : lien direct, 3 nouveaux fournisseurs ──
 export async function getDirectVideoUrl(url) {
     const id = videoId(url)
-    const cleanUrlStr = id ? `https://www.youtube.com/watch?v=${id}` : url
+    const cleanUrl = id ? `https://www.youtube.com/watch?v=${id}` : url
     const errors = []
 
-    // EliteProTech
     try {
-        const res = await axios.get(`https://eliteprotech-apis.zone.id/ytdown?url=${encodeURIComponent(cleanUrlStr)}&format=mp4`, { timeout: 30000, headers: BROWSER_HEADERS })
+        const res = await axios.get(`https://eliteprotech-apis.zone.id/ytdown?url=${encodeURIComponent(cleanUrl)}&format=mp4`, { timeout: 30000 })
         if (res.data?.success && res.data?.downloadURL) return { url: res.data.downloadURL, title: res.data.title }
         errors.push('EliteProTech: pas de lien')
     } catch (e) { errors.push(`EliteProTech: ${e.message}`) }
 
-    // Yupra
     try {
-        const res = await axios.get(`https://api.yupra.my.id/api/downloader/ytmp4?url=${encodeURIComponent(cleanUrlStr)}`, { timeout: 30000, headers: BROWSER_HEADERS })
+        const res = await axios.get(`https://api.yupra.my.id/api/downloader/ytmp4?url=${encodeURIComponent(cleanUrl)}`, { timeout: 30000 })
         if (res.data?.success && res.data?.data?.download_url) return { url: res.data.data.download_url, title: res.data.data.title }
         errors.push('Yupra: pas de lien')
     } catch (e) { errors.push(`Yupra: ${e.message}`) }
 
-    // Okatsu
     try {
-        const res = await axios.get(`https://okatsu-rolezapiiz.vercel.app/downloader/ytmp4?url=${encodeURIComponent(cleanUrlStr)}`, { timeout: 30000, headers: BROWSER_HEADERS })
+        const res = await axios.get(`https://okatsu-rolezapiiz.vercel.app/downloader/ytmp4?url=${encodeURIComponent(cleanUrl)}`, { timeout: 30000 })
         if (res.data?.result?.mp4) return { url: res.data.result.mp4, title: res.data.result.title }
         errors.push('Okatsu: pas de lien')
     } catch (e) { errors.push(`Okatsu: ${e.message}`) }
@@ -292,86 +273,85 @@ export async function getDirectVideoUrl(url) {
     throw new Error(`Tous les fournisseurs vidéo ont échoué:\n${errors.join('\n')}`)
 }
 
-// ─── Audio garanti lisible : lien direct + téléchargement + conversion ────
-// getDirectAudioUrl() trouve vite un lien, mais certains fournisseurs renvoient
-// l'audio brut YouTube (.m4a/opus) juste renommé en .mp3 → WhatsApp refuse de
-// le lire (00:00, "souci avec le fichier audio"). On télécharge donc ce lien
-// puis on le fait passer par ffmpeg pour garantir un vrai MP3 avant l'envoi.
-// ─── RapidAPI youtube-mp36 (service payant/freemium officiel de conversion) ──
-// Contrairement aux scrapers gratuits, celui-ci convertit vraiment côté
-// serveur et renvoie un vrai MP3 — donc pas besoin de ffmpeg derrière.
+// ─── RapidAPI (vrai MP3, service payant/freemium) ──────────────
 const RAPIDAPI_KEYS = [
     '25222978fdvjklmshe6b4366767fb8e6p18086bjsnee54a88ff976',
     '5b1f7e8168msh62ce2d53951cc9ap1678a4jsn7af1076e73c6'
 ]
-const RAPIDAPI_HOST = 'youtube-mp36.p.rapidapi.com'
-const RAPIDAPI_COUNTER_FILE = 'database/rapidapi_counter.json'
 
-function getRapidApiKeyIndex() {
-    try {
-        if (fs.existsSync(RAPIDAPI_COUNTER_FILE)) {
-            return JSON.parse(fs.readFileSync(RAPIDAPI_COUNTER_FILE, 'utf-8')).index || 0
-        }
-    } catch {}
-    return 0
-}
-function saveRapidApiKeyIndex(index) {
-    try {
-        if (!fs.existsSync('database')) fs.mkdirSync('database', { recursive: true })
-        fs.writeFileSync(RAPIDAPI_COUNTER_FILE, JSON.stringify({ index }))
-    } catch {}
-}
-
-async function viaRapidApi(url, attempt = 0) {
-    if (attempt >= RAPIDAPI_KEYS.length) throw new Error('RapidAPI: toutes les clés ont échoué (quota épuisé ?)')
-
+async function viaRapidApi(url) {
     const id = videoId(url)
     if (!id) throw new Error('RapidAPI: ID vidéo introuvable')
 
-    const keyIndex = getRapidApiKeyIndex() % RAPIDAPI_KEYS.length
-    const apiKey = RAPIDAPI_KEYS[keyIndex]
+    for (const apiKey of RAPIDAPI_KEYS) {
+        try {
+            const res = await axios.get('https://youtube-mp36.p.rapidapi.com/dl', {
+                params: { id },
+                headers: { 'x-rapidapi-key': apiKey, 'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com' },
+                timeout: 30000
+            })
+            const data = res.data
 
-    try {
-        const res = await axios.get('https://youtube-mp36.p.rapidapi.com/dl', {
-            params: { id },
-            headers: { 'x-rapidapi-key': apiKey, 'x-rapidapi-host': RAPIDAPI_HOST },
-            timeout: 30000
-        })
-        const data = res.data
-
-        if (data?.status === 'processing') {
-            await new Promise(r => setTimeout(r, 3000))
-            return viaRapidApi(url, attempt) // même clé, on repolle
-        }
-        if (data?.status !== 'ok' || !data?.link) throw new Error(data?.msg || 'Statut inattendu')
-
-        saveRapidApiKeyIndex(keyIndex + 1) // clé suivante au prochain appel (répartir la charge)
-
-        // Le CDN de RapidAPI exige des en-têtes précis (Referer/User-Agent) que
-        // WhatsApp n'envoie pas s'il fetch l'URL lui-même → on télécharge nous-mêmes.
-        const dest = tmpPath('audio')
-        const audioRes = await axios.get(data.link, {
-            responseType: 'arraybuffer',
-            timeout: 60000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-                'Referer': 'https://youtube-mp36.p.rapidapi.com/'
+            if (data?.status === 'processing') {
+                // On attend 3s et on réessaie avec la même clé (jusqu'à 3 tentatives)
+                for (let i = 0; i < 3; i++) {
+                    await new Promise(r => setTimeout(r, 3000))
+                    const retry = await axios.get('https://youtube-mp36.p.rapidapi.com/dl', {
+                        params: { id },
+                        headers: { 'x-rapidapi-key': apiKey, 'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com' },
+                        timeout: 30000
+                    })
+                    if (retry.data?.status === 'ok' && retry.data?.link) {
+                        const dest = tmpPath('audio')
+                        const audioRes = await axios.get(retry.data.link, {
+                            responseType: 'arraybuffer',
+                            timeout: 60000,
+                            headers: {
+                                'User-Agent': 'Mozilla/5.0',
+                                'Referer': 'https://youtube-mp36.p.rapidapi.com/'
+                            }
+                        })
+                        fs.writeFileSync(dest, Buffer.from(audioRes.data))
+                        if (validFile(dest)) {
+                            return { filePath: dest, title: retry.data.title }
+                        } else {
+                            try { fs.unlinkSync(dest) } catch {}
+                            throw new Error('Fichier RapidAPI invalide')
+                        }
+                    }
+                }
+                throw new Error('RapidAPI: toujours en traitement après 3 tentatives')
             }
-        })
-        fs.writeFileSync(dest, Buffer.from(audioRes.data))
-        if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('Fichier RapidAPI invalide') }
 
-        return { filePath: dest, title: data.title }
-    } catch (e) {
-        console.log(`[RapidAPI] Clé ${keyIndex + 1}/${RAPIDAPI_KEYS.length} échouée:`, e.message)
-        saveRapidApiKeyIndex(keyIndex + 1)
-        return viaRapidApi(url, attempt + 1) // clé suivante
+            if (data?.status !== 'ok' || !data?.link) throw new Error(data?.msg || 'Statut inattendu')
+
+            const dest = tmpPath('audio')
+            const audioRes = await axios.get(data.link, {
+                responseType: 'arraybuffer',
+                timeout: 60000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0',
+                    'Referer': 'https://youtube-mp36.p.rapidapi.com/'
+                }
+            })
+            fs.writeFileSync(dest, Buffer.from(audioRes.data))
+            if (validFile(dest)) {
+                return { filePath: dest, title: data.title }
+            } else {
+                try { fs.unlinkSync(dest) } catch {}
+                throw new Error('Fichier RapidAPI invalide')
+            }
+        } catch (e) {
+            console.log(`[RapidAPI] Clé ${apiKey.slice(0,6)}... échouée:`, e.message)
+            // Passer à la clé suivante
+        }
     }
+    throw new Error('RapidAPI: toutes les clés ont échoué (quota épuisé ou erreurs)')
 }
 
+// ─── Audio lisible (avec conversion si besoin) ──────────────────
 export async function getPlayableAudio(url) {
-    // 1. RapidAPI en premier : service payant/freemium officiel, renvoie un
-    // vrai MP3 — on le télécharge nous-mêmes (voir commentaire dans viaRapidApi).
+    // 1. RapidAPI (vrai MP3)
     try {
         const { filePath, title } = await viaRapidApi(url)
         return { filePath, title, isRemoteUrl: false }
@@ -393,27 +373,27 @@ export async function getPlayableAudio(url) {
         const converted = await ensureRealMp3(rawPath)
         return { filePath: converted, title }
     } catch (e) {
-        // Si ffmpeg échoue (indisponible), on renvoie quand même le fichier brut
-        // plutôt que de bloquer complètement — mieux que rien.
         console.log('[YT] ffmpeg indisponible, envoi du fichier brut:', e.message)
         return { filePath: rawPath, title }
     }
 }
 
+// ─── Téléchargement complet (audio ou vidéo) avec fallbacks ──
 export async function downloadYoutube(url, type = 'audio') {
-    // Nettoyer l'URL : certains fournisseurs (Loader.to) rejettent les liens
-    // avec des paramètres de tracking type ?si=... qu'on trouve dans les liens partagés
     const id = videoId(url)
     const cleanUrl = id ? `https://www.youtube.com/watch?v=${id}` : url
 
     const providers = [
-        ['yt-dlp',    () => viaYtdlp(cleanUrl, type)],
-        ['Ryzumi',    () => viaRyzumi(cleanUrl, type)],
-        ['Ryzumi V2', () => viaRyzumiV2(cleanUrl, type)],
-        ['Nexray',    () => viaNexray(cleanUrl, type)],
-        ['Cobalt',    () => viaCobalt(cleanUrl, type)],
-        ['Loader.to', () => viaLoaderTo(cleanUrl, type)],
+        ['yt-dlp', () => viaYtdlp(cleanUrl, type)],
+        ['Ryzumi', () => viaRyzumi(cleanUrl, type)],
     ]
+    if (type === 'video') {
+        providers.push(['Ryzumi V2', () => viaRyzumiV2(cleanUrl)])
+    } else { // audio
+        providers.push(['Nexray', () => viaNexray(cleanUrl)])
+    }
+    providers.push(['Cobalt', () => viaCobalt(cleanUrl, type)])
+    providers.push(['Loader.to', () => viaLoaderTo(cleanUrl, type)])
 
     const attempts = providers.map(([name, fn]) =>
         fn()
@@ -441,5 +421,4 @@ export async function downloadYoutube(url, type = 'audio') {
     return filePath
 }
 
-export default { downloadYoutube, videoId }
-
+export default { downloadYoutube, videoId, getDirectAudioUrl, getDirectVideoUrl, getPlayableAudio }
