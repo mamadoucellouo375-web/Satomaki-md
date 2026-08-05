@@ -26,7 +26,7 @@ async function saveStream(remoteUrl, dest) {
         res.data.pipe(w)
         w.on('finish', ok); w.on('error', fail); res.data.on('error', fail)
     })
-}
+
 
 function validFile(dest) {
     try {
@@ -344,7 +344,22 @@ async function viaRapidApi(url, attempt = 0) {
         if (data?.status !== 'ok' || !data?.link) throw new Error(data?.msg || 'Statut inattendu')
 
         saveRapidApiKeyIndex(keyIndex + 1) // clé suivante au prochain appel (répartir la charge)
-        return { url: data.link, title: data.title }
+
+        // Le CDN de RapidAPI exige des en-têtes précis (Referer/User-Agent) que
+        // WhatsApp n'envoie pas s'il fetch l'URL lui-même → on télécharge nous-mêmes.
+        const dest = tmpPath('audio')
+        const audioRes = await axios.get(data.link, {
+            responseType: 'arraybuffer',
+            timeout: 60000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'Referer': 'https://youtube-mp36.p.rapidapi.com/'
+            }
+        })
+        fs.writeFileSync(dest, Buffer.from(audioRes.data))
+        if (!validFile(dest)) { try { fs.unlinkSync(dest) } catch {}; throw new Error('Fichier RapidAPI invalide') }
+
+        return { filePath: dest, title: data.title }
     } catch (e) {
         console.log(`[RapidAPI] Clé ${keyIndex + 1}/${RAPIDAPI_KEYS.length} échouée:`, e.message)
         saveRapidApiKeyIndex(keyIndex + 1)
@@ -354,10 +369,10 @@ async function viaRapidApi(url, attempt = 0) {
 
 export async function getPlayableAudio(url) {
     // 1. RapidAPI en premier : service payant/freemium officiel, renvoie un
-    // vrai MP3 direct, pas besoin de téléchargement local ni de conversion.
+    // vrai MP3 — on le télécharge nous-mêmes (voir commentaire dans viaRapidApi).
     try {
-        const { url: mp3Url, title } = await viaRapidApi(url)
-        return { filePath: mp3Url, title, isRemoteUrl: true }
+        const { filePath, title } = await viaRapidApi(url)
+        return { filePath, title, isRemoteUrl: false }
     } catch (e) {
         console.log('[YT] RapidAPI indisponible, repli sur les fournisseurs gratuits:', e.message)
     }
@@ -425,3 +440,4 @@ export async function downloadYoutube(url, type = 'audio') {
 }
 
 export default { downloadYoutube, videoId }
+
