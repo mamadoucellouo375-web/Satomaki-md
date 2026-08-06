@@ -17,7 +17,15 @@ export async function play(message, client) {
         if (!v) return client.sendMessage(remoteJid, { text: error('Introuvable.') }, { quoted: message })
 
         await client.sendMessage(remoteJid, {
-            text: card('TROUVÉ', [`${v.title.substring(0,60)}`, `Durée : ${v.timestamp}`])
+            image: { url: v.thumbnail },
+            caption:
+                `✠ *AUDIO DOWNLOADER* 🎧\n\n` +
+                `◉ Titre    : ${v.title.substring(0, 60)}\n` +
+                `◉ Durée    : ${v.timestamp}\n` +
+                `◉ Vues     : ${Number(v.views || 0).toLocaleString('fr-FR')}\n` +
+                `◉ Auteur   : ${v.author?.name || '-'}\n` +
+                `◉ Statut   : Téléchargement...\n\n` +
+                `『 𝐒𝐀𝐓𝐎𝐌𝐀𝐊𝐈-𝐌𝐃 』`
         }, { quoted: message })
 
         const { filePath, isRemoteUrl } = await getPlayableAudio(v.url)
@@ -31,4 +39,3 @@ export async function play(message, client) {
     }
 }
 export default play
-
