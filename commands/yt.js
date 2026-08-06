@@ -1,6 +1,6 @@
 import ytSearch from 'yt-search'
 import fs from 'fs'
-import { downloadYoutube } from '../utils/ytdownload.js'
+import { getPlayableAudio } from '../utils/ytdownload.js'
 import { card, loading, error } from '../utils/design.js'
 
 export default async function ytCommand(client, message) {
@@ -29,12 +29,12 @@ export default async function ytCommand(client, message) {
         }
 
         await client.sendMessage(remoteJid, { text: loading('Téléchargement audio') }, { quoted: message })
-        const filePath = await downloadYoutube(url, 'audio')
+        const { filePath, isRemoteUrl } = await getPlayableAudio(url)
         await client.sendMessage(remoteJid, {
             audio: { url: filePath }, mimetype: 'audio/mpeg', ptt: false,
             fileName: `${title.replace(/[^\w\s]/g,'').trim()}.mp3`
         }, { quoted: message })
-        fs.unlink(filePath, () => {})
+        if (!isRemoteUrl) fs.unlink(filePath, () => {})
     } catch (e) {
         await client.sendMessage(remoteJid, { text: error(e.message.split('\n')[0]) }, { quoted: message })
     }
