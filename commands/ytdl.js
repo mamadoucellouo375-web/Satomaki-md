@@ -1,6 +1,7 @@
 // ytdl.js - YouTube audio/vidéo (multi-API fallback, méthode directe)
 import ytSearch from 'yt-search'
-import { getDirectAudioUrl, getDirectVideoUrl } from '../utils/ytdownload.js'
+import fs from 'fs'
+import { getPlayableAudio, getDirectVideoUrl } from '../utils/ytdownload.js'
 import { card, loading, error } from '../utils/design.js'
 
 export const handleYtdlResponse = async (client, message, text) => {}
@@ -41,15 +42,17 @@ export default async function ytdlCommand(client, message) {
                 caption: `🎬 *${title}*\n✠ *SATOMAKI-MD*`
             }, { quoted: message })
         } else {
-            const { url: audioUrl } = await getDirectAudioUrl(url)
+            const { filePath, isRemoteUrl } = await getPlayableAudio(url)
             await client.sendMessage(remoteJid, {
-                audio: { url: audioUrl },
+                audio: { url: filePath },
                 mimetype: 'audio/mpeg',
                 ptt: false,
                 fileName: `${title}.mp3`
             }, { quoted: message })
+            if (!isRemoteUrl) fs.unlink(filePath, () => {})
         }
     } catch (e) {
         await client.sendMessage(remoteJid, { text: error(`Échec du téléchargement.\n${e.message}`) }, { quoted: message })
     }
 }
+
