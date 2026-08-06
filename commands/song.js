@@ -27,13 +27,15 @@ export default async function songCommand(client, message) {
         if (!v) return client.sendMessage(remoteJid, { text: error(`Aucun résultat pour "${finalQuery}"`) }, { quoted: message })
 
         await client.sendMessage(remoteJid, {
-            text: card('TROUVÉ', [
-                `Titre  : ${v.title.substring(0, 60)}`,
-                `Durée  : ${v.timestamp}`,
-                `Vues   : ${Number(v.views || 0).toLocaleString('fr-FR')}`,
-                '---',
-                'Téléchargement en cours...'
-            ])
+            image: { url: v.thumbnail },
+            caption:
+                `✠ *AUDIO DOWNLOADER* 🎧\n\n` +
+                `◉ Titre    : ${v.title.substring(0, 60)}\n` +
+                `◉ Durée    : ${v.timestamp}\n` +
+                `◉ Vues     : ${Number(v.views || 0).toLocaleString('fr-FR')}\n` +
+                `◉ Auteur   : ${v.author?.name || '-'}\n` +
+                `◉ Statut   : Téléchargement...\n\n` +
+                `『 𝐒𝐀𝐓𝐎𝐌𝐀𝐊𝐈-𝐌𝐃 』`
         }, { quoted: message })
 
         const { filePath, isRemoteUrl } = await getPlayableAudio(v.url)
