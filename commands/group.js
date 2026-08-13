@@ -1,7 +1,7 @@
 // group.js - Commandes admin/groupe SATOMAKI-MD
 import { card, success, error, loading } from '../utils/design.js'
 import configmanager from '../utils/configmanager.js'
-import { requireBotAdmin, getTarget, targetIsAdmin } from '../utils/groupHelper.js'
+import { requireBotAdmin, getTarget, targetIsAdmin, isBotAdmin } from '../utils/groupHelper.js'
 import { getGroupMetadata, invalidate } from '../utils/metaCache.js'
 
 // ─── Antilink (état persistant par groupe) ─────────────────────
@@ -40,16 +40,32 @@ export async function linkDetection(client, message) {
     const body   = message.message?.conversation || message.message?.extendedTextMessage?.text || ''
     const hasLink = /(https?:\/\/|whatsapp\.com\/|t\.me\/|wa\.me\/)/i.test(body)
     if (!hasLink || message.key.fromMe) return
+
+    let meta
     try {
-        const meta   = await getGroupMetadata(client, remoteJid)
-        const sender = message.key.participant || remoteJid
-        if (meta.participants.find(p => p.id === sender)?.admin) return
+        meta = await getGroupMetadata(client, remoteJid)
+    } catch (e) {
+        console.error('[antilink] Impossible de lire les métadonnées du groupe:', e.message)
+        return
+    }
+
+    const sender = message.key.participant || remoteJid
+    if (meta.participants.find(p => p.id === sender)?.admin) return // l'expéditeur est admin, exempté
+
+    if (!isBotAdmin(client, meta)) {
+        console.log('[antilink] Lien détecté mais le bot n\'est pas admin, suppression impossible.')
+        return
+    }
+
+    try {
         await client.sendMessage(remoteJid, { delete: message.key })
         await client.sendMessage(remoteJid, {
             text: card('LIEN DÉTECTÉ', [`Membre : @${sender.split('@')[0]}`, 'Lien supprimé automatiquement.']),
             mentions: [sender]
         })
-    } catch {}
+    } catch (e) {
+        console.error('[antilink] Échec de la suppression du message:', e.message)
+    }
 }
 
 // ─── Antiflood ─────────────────────────────────────────────────
@@ -118,13 +134,26 @@ export async function floodDetection(client, message) {
     floodMap.set(key, times)
     if (times.length >= 6) {
         floodMap.delete(key)
+
+        let meta
+        try { meta = await getGroupMetadata(client, remoteJid) } catch (e) {
+            console.error('[antiflood] Impossible de lire les métadonnées:', e.message)
+            return
+        }
+        if (!isBotAdmin(client, meta)) {
+            console.log('[antiflood] Flood détecté mais le bot n\'est pas admin, suppression impossible.')
+            return
+        }
+
         try {
             await client.sendMessage(remoteJid, { delete: message.key })
             await client.sendMessage(remoteJid, {
                 text: card('FLOOD DÉTECTÉ', [`Membre : @${sender.split('@')[0]}`, 'Trop de messages supprimés.']),
                 mentions: [sender]
             })
-        } catch {}
+        } catch (e) {
+            console.error('[antiflood] Échec de la suppression:', e.message)
+        }
     }
 }
 
