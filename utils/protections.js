@@ -2,6 +2,7 @@
 import configmanager from './configmanager.js'
 import { card } from './design.js'
 import { getGroupMetadata } from './metaCache.js'
+import { isBotAdmin } from './groupHelper.js'
 
 // ─── Structure persistante ─────────────────────────────────────
 function cfg(key, def = {}) {
@@ -36,14 +37,20 @@ export async function nsfw(client, message) {
     const sender = message.key.participant || remoteJid
     const body   = message.message?.conversation || message.message?.extendedTextMessage?.text || ''
 
+    let meta
     try {
-        const meta    = await getGroupMetadata(client, remoteJid)
+        meta = await getGroupMetadata(client, remoteJid)
         const isAdmin = meta.participants.find(p => p.id === sender)?.admin
         if (isAdmin) return
     } catch { return }
 
     const isNsfw = NSFW_PATTERNS.some(r => r.test(body))
     if (!isNsfw) return
+
+    if (!isBotAdmin(client, meta)) {
+        console.log('[antinsfw] Contenu détecté mais le bot n\'est pas admin, suppression impossible.')
+        return
+    }
 
     try {
         await client.sendMessage(remoteJid, { delete: message.key })
@@ -54,7 +61,9 @@ export async function nsfw(client, message) {
             ]),
             mentions: [sender]
         })
-    } catch {}
+    } catch (e) {
+        console.error('[antinsfw] Échec de la suppression:', e.message)
+    }
 }
 
 // ─── Anti-Bad Words (mots interdits personnalisables) ─────────
@@ -78,8 +87,9 @@ export async function badword(client, message) {
     const sender = message.key.participant || remoteJid
     const body   = (message.message?.conversation || message.message?.extendedTextMessage?.text || '').toLowerCase()
 
+    let meta
     try {
-        const meta    = await getGroupMetadata(client, remoteJid)
+        meta = await getGroupMetadata(client, remoteJid)
         const isAdmin = meta.participants.find(p => p.id === sender)?.admin
         if (isAdmin) return
     } catch { return }
@@ -87,6 +97,11 @@ export async function badword(client, message) {
     const badWords = getBadWords(remoteJid)
     const found    = badWords.find(w => body.includes(w.toLowerCase()))
     if (!found) return
+
+    if (!isBotAdmin(client, meta)) {
+        console.log('[antiword] Mot interdit détecté mais le bot n\'est pas admin, suppression impossible.')
+        return
+    }
 
     try {
         await client.sendMessage(remoteJid, { delete: message.key })
@@ -97,7 +112,9 @@ export async function badword(client, message) {
             ]),
             mentions: [sender]
         })
-    } catch {}
+    } catch (e) {
+        console.error('[antiword] Échec de la suppression:', e.message)
+    }
 }
 
 // ─── Anti-Ghost (supprime les comptes désactivés/fantômes) ────
@@ -130,6 +147,16 @@ export async function antibot(client, message) {
     const isBot = BOT_SIGNATURES.some(r => r.test(body))
     if (!isBot) return
 
+    let meta
+    try { meta = await getGroupMetadata(client, remoteJid) } catch (e) {
+        console.error('[antibot] Impossible de lire les métadonnées:', e.message)
+        return
+    }
+    if (!isBotAdmin(client, meta)) {
+        console.log('[antibot] Bot détecté mais notre bot n\'est pas admin, expulsion impossible.')
+        return
+    }
+
     try {
         await client.sendMessage(remoteJid, {
             text: card('BOT DÉTECTÉ', [
@@ -141,7 +168,9 @@ export async function antibot(client, message) {
             mentions: [sender]
         })
         await client.groupParticipantsUpdate(remoteJid, [sender], 'remove')
-    } catch {}
+    } catch (e) {
+        console.error('[antibot] Échec de l\'expulsion:', e.message)
+    }
 }
 
 // ─── Anti-Sticker spam ────────────────────────────────────────
@@ -155,8 +184,9 @@ export async function antisticker(client, message) {
     if (!message.message?.stickerMessage) return
 
     const sender = message.key.participant || remoteJid
+    let meta
     try {
-        const meta    = await getGroupMetadata(client, remoteJid)
+        meta = await getGroupMetadata(client, remoteJid)
         const isAdmin = meta.participants.find(p => p.id === sender)?.admin
         if (isAdmin) return
     } catch { return }
@@ -169,6 +199,12 @@ export async function antisticker(client, message) {
 
     if (recent.length >= 4) {
         stickerTracker.delete(key)
+
+        if (!isBotAdmin(client, meta)) {
+            console.log('[antisticker] Spam détecté mais le bot n\'est pas admin, suppression impossible.')
+            return
+        }
+
         try {
             await client.sendMessage(remoteJid, { delete: message.key })
             await client.sendMessage(remoteJid, {
@@ -178,8 +214,11 @@ export async function antisticker(client, message) {
                 ]),
                 mentions: [sender]
             })
-        } catch {}
+        } catch (e) {
+            console.error('[antisticker] Échec de la suppression:', e.message)
+        }
     }
 }
 
 export default { nsfw, badword, antibot, antisticker, detectGhost, isEnabled, toggle, setBadWords, getBadWords }
+
