@@ -25,6 +25,8 @@ import poll from '../commands/poll.js'
 import lyrics from '../commands/lyrics.js'
 import animu from '../commands/animu.js'
 import audit from '../commands/audit.js'
+import { handleRecrutResponse } from '../commands/recrut.js'
+import { handleCompressResponse } from '../commands/compress.js'
 import { npmSearch, githubRepo, gitclone } from '../commands/devtools.js'
 import stickerdl from '../commands/stickerdl.js'
 import sender from '../commands/sender.js'
@@ -40,6 +42,13 @@ import fancy from '../commands/fancy.js'
 import react from "../utils/react.js"
 import info, { setmenu } from "../commands/menu.js"
 import { pingTest } from "../commands/ping.js"
+import botfont from "../commands/botfont.js"
+import add from "../commands/add.js"
+import get from "../commands/get.js"
+import messageCommand from "../commands/message.js"
+import writingStyles from "../commands/recrut.js"
+import compressCommand from "../commands/compress.js"
+import reactCommand from "../commands/react.js"
 import auto from '../commands/auto.js'
 import uptime from '../commands/uptime.js'
 import { pair } from '../commands/pair.js'
@@ -307,6 +316,13 @@ function buildCommandMap(client) {
         ['zip',         (c,m) => zip(c,m)],
         ['account',     (c,m) => accountCommand(c,m)],
         ['mail',        (c,m,a) => mailCommand(c,m,a)],
+        ['botfont',     (c,m,a) => botfont(c,m,a)],
+        ['add',         (c,m) => add(c,m)],
+        ['get',         (c,m,a) => get(c,m,a)],
+        ['message',     (c,m,a) => messageCommand(c,m,a)],
+        ['wstyle',      (c,m,a) => writingStyles(c,m,a)],
+        ['compress',    (c,m,a) => compressCommand(c,m,a)],
+        ['react',       (c,m) => reactCommand(c,m)],
         ['app',         (c,m,a) => appCommand(c,m,a)],
         ['spam',        async (c,m) => {
             const txt = m.message?.conversation || m.message?.extendedTextMessage?.text || ''
@@ -430,6 +446,8 @@ async function handleIncomingMessage(client, event) {
                     try { await handleQuizAnswer(client, message, body.toLowerCase()) } catch {}
                     try { await handleTruthOrDareResponse(client, message, body.toLowerCase()) } catch {}
                     try { await handleYtdlResponse(client, message, body.toLowerCase()) } catch {}
+                    try { await handleCompressResponse(client, message, body) } catch {}
+                    try { await handleRecrutResponse(client, message, body) } catch {}
                     try { await handleMove(client, message, body.toLowerCase()) } catch {}
                     try { await handleDuoResponse(client, message, body.toLowerCase()) } catch {}
                     try { await handleStickerPackResponse(client, message) } catch {}
