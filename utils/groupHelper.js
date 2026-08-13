@@ -10,6 +10,21 @@ function numOf(jid) {
 }
 
 /**
+ * Version silencieuse (pas de message d'erreur) : juste un booléen.
+ * Utile pour les détections passives (antilink, antiflood...) où on ne veut
+ * pas spammer le groupe d'un message "bot non admin" à chaque lien détecté.
+ */
+export function isBotAdmin(client, meta) {
+    const me = client.user || {}
+    const botIds  = [me.id, me.lid, me.jid, me.phoneNumber].filter(Boolean)
+    const botNums = new Set(botIds.map(numOf).filter(Boolean))
+    return meta.participants.some(p => {
+        const candidates = [p.id, p.jid, p.lid, p.phoneNumber].filter(Boolean)
+        return p.admin && candidates.some(c => botIds.includes(c) || botNums.has(numOf(c)))
+    })
+}
+
+/**
  * Vérifie si le bot est admin du groupe. 
  * Retourne { isAdmin, isSuperAdmin, meta } ou envoie un message d'erreur et retourne null.
  */
